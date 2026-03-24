@@ -15,15 +15,38 @@ A native windowed app inside the WebOS desktop shell that lets you:
 
 ## Status
 
-🟡 **Phase 0 — Discovery & Design** (spec complete, repo initialized)
+🟢 **Phase 4 complete** — full standalone planner with backend, workflow export, and simulation
 
 See [PROGRESS.md](./PROGRESS.md) for detailed phase tracking and milestones.
+
+## Quick Start
+
+```bash
+npm install
+npm start
+# Open http://localhost:3000
+```
+
+Or open `index.html` directly in a browser (localStorage-only mode, no server required).
 
 ## Scope
 
 Read the full product spec: [SPEC.md](./SPEC.md)
 
 Covers node types, edge system, canvas interaction, side panels, templates, runtime overlays, data model, API endpoints, testing plan, and delivery phases.
+
+## Features
+
+- Infinite SVG canvas with pan, zoom, grid, and minimap
+- 12 typed node types (note, task, agent, tool, workflow-step, decision, approval, runbook, artifact, memory, external-api, group)
+- 7 edge types with visual styling
+- Validation engine with issue detection
+- Simulation with execution order, dead ends, and risk analysis
+- Workflow JSON export compatible with OpenClaw dispatcher
+- Backend API with SQLite persistence and version history
+- Server browser modal for opening/saving plans
+- 6+ built-in templates for common workflows
+- Undo/redo, copy/paste, marquee selection, auto-layout
 
 ## Related
 
@@ -32,4 +55,10 @@ Covers node types, edge system, canvas interaction, side panels, templates, runt
 
 ## License
 
-MIT
+Apache License 2.0 with commercial use restriction.
+
+Free for individuals, open-source projects, non-profits, educational institutions, and companies with annual revenue ≤ $500,000 USD.
+
+Commercial entities with annual revenue exceeding $500,000 USD must obtain a commercial license. Contact **license@pgedeon.com** for details.
+
+See [LICENSE](./LICENSE) for full terms.

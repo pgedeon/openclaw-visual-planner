@@ -14,7 +14,8 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "Apache-2.0-WITH-COMMERCIAL-RESTRICTION",
+  "licenseUrl": "https://github.com/pgedeon/openclaw-visual-planner/blob/main/LICENSE",
   "bugs": {
     "url": "https://github.com/pgedeon/openclaw-visual-planner/issues"
   },
