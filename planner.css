@@ -1396,9 +1396,14 @@ svg text {
    -------------------------------------------- */
 
 .planner-modal-host {
+  pointer-events: none;
   position: fixed;
   inset: 0;
   z-index: 18;
+}
+
+.planner-modal-host:not([hidden]) {
+  pointer-events: auto;
 }
 
 .planner-modal {
