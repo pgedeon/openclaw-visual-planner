@@ -270,6 +270,8 @@
     const canvasMount = queryWithin(rootNode, '#planner-canvas');
     const inspectorMount = queryWithin(rootNode, '#planner-inspector');
     const trayMount = queryWithin(rootNode, '#planner-tray');
+    const workspaceMount = queryWithin(rootNode, '.planner-workspace');
+    const appMount = queryWithin(rootNode, '.planner-app');
     const toastHost = queryWithin(rootNode, '#planner-toast-host');
     const modalHost = queryWithin(rootNode, '#planner-modal-host');
 
@@ -294,6 +296,13 @@
     let destroyed = false;
     let autosaveUnsubscribe = null;
     const shellCleanupFns = [];
+    let canvas = null;
+    let compactLayout = false;
+    let inspectorCollapsed = false;
+    let userToggledInspector = false;
+    let autoCollapsedInspector = false;
+    let userTouchedMinimap = false;
+    let autoHidMinimapForCompact = false;
 
     const navigateToShellView = (viewId, payload = {}, fallbackMessage = '') => {
       if (typeof navigateToView !== 'function') {
@@ -407,6 +416,72 @@
         stepType: node.data?.stepType || '',
         payload: node.data?.promptPayload || '',
       });
+    };
+
+    const isCompactViewport = () => {
+      if (typeof window.matchMedia === 'function') {
+        return window.matchMedia('(max-width: 1120px)').matches;
+      }
+
+      return window.innerWidth <= 1120;
+    };
+
+    const applyLayoutState = () => {
+      workspaceMount?.classList.toggle('is-inspector-collapsed', inspectorCollapsed);
+      inspectorMount?.classList.toggle('is-collapsed', inspectorCollapsed);
+      appMount?.classList.toggle('is-compact-layout', compactLayout);
+      canvas?.requestRender?.('layout:responsive');
+    };
+
+    const setInspectorCollapsed = (nextValue, { userInitiated = false, auto = false } = {}) => {
+      inspectorCollapsed = Boolean(nextValue);
+
+      if (userInitiated) {
+        userToggledInspector = true;
+        autoCollapsedInspector = false;
+      } else {
+        autoCollapsedInspector = Boolean(auto) && inspectorCollapsed;
+        if (!inspectorCollapsed) {
+          autoCollapsedInspector = false;
+        }
+      }
+
+      applyLayoutState();
+    };
+
+    const applyResponsiveLayout = () => {
+      compactLayout = isCompactViewport();
+
+      if (compactLayout && !userToggledInspector && !inspectorCollapsed) {
+        setInspectorCollapsed(true, { auto: true });
+      } else if (!compactLayout && autoCollapsedInspector && !userToggledInspector) {
+        setInspectorCollapsed(false, { auto: true });
+      } else {
+        applyLayoutState();
+      }
+
+      const showMinimap = Boolean(store.getState().preferences.showMinimap);
+      if (compactLayout && !userTouchedMinimap && showMinimap) {
+        store.actions.setPreference('showMinimap', false, {
+          history: false,
+          dirty: false,
+          reason: 'preferences:compact-default',
+        });
+        autoHidMinimapForCompact = true;
+      }
+
+      if (!compactLayout && autoHidMinimapForCompact && !userTouchedMinimap && !store.getState().preferences.showMinimap) {
+        store.actions.setPreference('showMinimap', true, {
+          history: false,
+          dirty: false,
+          reason: 'preferences:compact-restore',
+        });
+        autoHidMinimapForCompact = false;
+      }
+    };
+
+    const handleResponsiveResize = () => {
+      applyResponsiveLayout();
     };
 
     const setModal = (nextModal) => {

@@ -353,6 +353,7 @@
 
   function createPlannerTray({ mountNode, store, onFocusEntity, notify }) {
     let teardown = [];
+    let trayCollapsed = false;
 
     const render = () => {
       const state = store.getState();
@@ -363,6 +364,8 @@
         : activeTab === 'runtime'
           ? (state.runtime.runStatus ? 'Runtime overlay synced from the latest workflow payload.' : 'Runtime overlay is editable locally.')
           : (state.validation.lastRunAt ? `Last checked ${new Date(state.validation.lastRunAt).toLocaleTimeString()}` : 'Validation has not run yet.');
+
+      mountNode.classList.toggle('is-collapsed', trayCollapsed);
 
       mountNode.innerHTML = `
         <div class="planner-tray__header">
@@ -379,8 +382,11 @@
               Runtime
             </button>
           </div>
-          <div class="planner-tray__meta">
-            ${metaText}
+          <div class="planner-tray__header-actions">
+            <div class="planner-tray__meta">
+              ${metaText}
+            </div>
+            <button type="button" class="planner-button planner-button--ghost" data-tray-toggle="true">${trayCollapsed ? 'Open Tray' : 'Close Tray'}</button>
           </div>
         </div>
         <div class="planner-tray__body">
@@ -394,6 +400,13 @@
     };
 
     const handleClick = (event) => {
+      const toggleButton = event.target.closest('[data-tray-toggle]');
+      if (toggleButton) {
+        trayCollapsed = !trayCollapsed;
+        render();
+        return;
+      }
+
       const tabButton = event.target.closest('[data-tray-tab]');
       if (tabButton) {
         store.actions.setTrayTab(tabButton.dataset.trayTab);

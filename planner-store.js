@@ -318,17 +318,23 @@
             draft.meta.dirty = true;
           }, { history: true, reason: 'viewport:reset' });
         },
-        setPreference(key, value) {
+        setPreference(key, value, options = {}) {
           return mutate((draft) => {
             draft.preferences[key] = value;
-            draft.meta.dirty = true;
-          }, { history: true, reason: 'preferences:update' });
+            draft.meta.dirty = options.dirty ?? true;
+          }, {
+            history: options.history ?? true,
+            reason: options.reason || 'preferences:update',
+          });
         },
-        togglePreference(key) {
+        togglePreference(key, options = {}) {
           return mutate((draft) => {
             draft.preferences[key] = !draft.preferences[key];
-            draft.meta.dirty = true;
-          }, { history: true, reason: 'preferences:toggle' });
+            draft.meta.dirty = options.dirty ?? true;
+          }, {
+            history: options.history ?? true,
+            reason: options.reason || 'preferences:toggle',
+          });
         },
         selectNode(nodeId) {
           return mutate((draft) => {

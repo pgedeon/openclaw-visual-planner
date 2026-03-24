@@ -83,6 +83,7 @@
             <button class="planner-button" type="button" data-action="toggle-grid">${state.preferences.showGrid ? 'Hide Grid' : 'Show Grid'}</button>
             <button class="planner-button" type="button" data-action="toggle-snap">Snap ${state.preferences.snapToGrid ? 'On' : 'Off'}</button>
             <button class="planner-button" type="button" data-action="toggle-minimap">Map ${state.preferences.showMinimap ? 'On' : 'Off'}</button>
+            <button class="planner-button" type="button" data-action="toggle-inspector">Inspector</button>
           </div>
 
           <div class="planner-toolbar__group">
@@ -139,6 +140,7 @@
       if (action === 'toggle-grid') actions.togglePreference?.('showGrid');
       if (action === 'toggle-snap') actions.togglePreference?.('snapToGrid');
       if (action === 'toggle-minimap') actions.togglePreference?.('showMinimap');
+      if (action === 'toggle-inspector') actions.toggleInspector?.();
       if (action === 'undo') actions.undo?.();
       if (action === 'redo') actions.redo?.();
       if (action === 'save') actions.saveDocument?.();

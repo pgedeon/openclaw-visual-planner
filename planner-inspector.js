@@ -251,6 +251,19 @@
   function createPlannerInspector({ mountNode, store, actions = {} }) {
     let cleanup = [];
 
+    const renderInspectorHeader = ({ eyebrow = 'Inspector', title = 'Nothing Selected', extraActions = '' } = {}) => `
+      <div class="planner-panel__header">
+        <div>
+          <div class="planner-panel__eyebrow">${Planner.escapeHtml(eyebrow)}</div>
+          <h2 class="planner-panel__title">${Planner.escapeHtml(title)}</h2>
+        </div>
+        <div class="planner-chip-stack planner-inspector__header-actions">
+          ${extraActions}
+          ${actions.toggleInspector ? '<button type="button" class="planner-button planner-button--ghost" data-inspector-action="toggle">Collapse</button>' : ''}
+        </div>
+      </div>
+    `;
+
     const renderNodeIntegrations = (node) => {
       const integrationButtons = [];
 
@@ -282,12 +295,7 @@
     };
 
     const renderEmpty = (state) => `
-      <div class="planner-panel__header">
-        <div>
-          <div class="planner-panel__eyebrow">Inspector</div>
-          <h2 class="planner-panel__title">Nothing Selected</h2>
-        </div>
-      </div>
+      ${renderInspectorHeader({ eyebrow: 'Inspector', title: 'Nothing Selected' })}
       <div class="planner-inspector__summary-card">
         <div class="planner-inspector__summary-title">${Planner.escapeHtml(state.document.metadata.title)}</div>
         <div class="planner-inspector__summary-copy">${Planner.escapeHtml(state.document.metadata.description || 'Describe the plan, then build nodes and edges around it.')}</div>
@@ -312,13 +320,11 @@
       const categories = Array.from(new Set(nodes.map((node) => Planner.getPlannerNodeType(node.type).label)));
 
       return `
-        <div class="planner-panel__header">
-          <div>
-            <div class="planner-panel__eyebrow">Inspector</div>
-            <h2 class="planner-panel__title">${nodes.length} Nodes Selected</h2>
-          </div>
-          <button type="button" class="planner-button planner-button--ghost" data-delete-selection="true">Delete</button>
-        </div>
+        ${renderInspectorHeader({
+          eyebrow: 'Inspector',
+          title: `${nodes.length} Nodes Selected`,
+          extraActions: '<button type="button" class="planner-button planner-button--ghost" data-delete-selection="true">Delete</button>',
+        })}
         <div class="planner-inspector__summary-card">
           <div class="planner-inspector__summary-title">Batch selection</div>
           <div class="planner-inspector__summary-copy">Use the toolbar to align, distribute, tidy, duplicate, or copy the current selection.</div>
@@ -355,13 +361,11 @@
       const issueCount = (state.validation.issues || []).filter((issue) => issue.entityType === 'node' && issue.entityId === node.id).length;
 
       return `
-        <div class="planner-panel__header">
-          <div>
-            <div class="planner-panel__eyebrow">${Planner.escapeHtml(definition.category)}</div>
-            <h2 class="planner-panel__title">${Planner.escapeHtml(definition.label)}</h2>
-          </div>
-          <button type="button" class="planner-button planner-button--ghost" data-delete-selection="true">Delete</button>
-        </div>
+        ${renderInspectorHeader({
+          eyebrow: definition.category,
+          title: definition.label,
+          extraActions: '<button type="button" class="planner-button planner-button--ghost" data-delete-selection="true">Delete</button>',
+        })}
         <div class="planner-inspector__summary-card">
           <div class="planner-inspector__summary-title">${Planner.escapeHtml(node.data?.title || definition.label)}</div>
           <div class="planner-inspector__summary-copy">${Planner.escapeHtml(definition.description)}</div>
@@ -409,13 +413,11 @@
       const issueCount = (state.validation.issues || []).filter((issue) => issue.entityType === 'edge' && issue.entityId === edge.id).length;
 
       return `
-        <div class="planner-panel__header">
-          <div>
-            <div class="planner-panel__eyebrow">Connection</div>
-            <h2 class="planner-panel__title">${Planner.escapeHtml(edgeType.label)}</h2>
-          </div>
-          <button type="button" class="planner-button planner-button--ghost" data-delete-selection="true">Delete</button>
-        </div>
+        ${renderInspectorHeader({
+          eyebrow: 'Connection',
+          title: edgeType.label,
+          extraActions: '<button type="button" class="planner-button planner-button--ghost" data-delete-selection="true">Delete</button>',
+        })}
         <div class="planner-inspector__summary-card">
           <div class="planner-inspector__summary-title">${Planner.escapeHtml(edge.label || edgeType.shortLabel)}</div>
           <div class="planner-inspector__summary-copy">${Planner.escapeHtml(edgeType.description)}</div>
@@ -544,6 +546,12 @@
     };
 
     const handleClick = (event) => {
+      const inspectorAction = event.target.closest('[data-inspector-action]');
+      if (inspectorAction?.dataset.inspectorAction === 'toggle') {
+        actions.toggleInspector?.();
+        return;
+      }
+
       const deleteButton = event.target.closest('[data-delete-selection]');
       if (deleteButton) {
         store.actions.removeSelection();

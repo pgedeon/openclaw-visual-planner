@@ -12,6 +12,58 @@
   function createPlannerPalette({ mountNode, onCreateNode, onApplyTemplate }) {
     let searchTerm = '';
     let cleanup = [];
+    let tooltipNode = null;
+
+    const ensureTooltipNode = () => {
+      if (tooltipNode || !document.body) {
+        return tooltipNode;
+      }
+
+      tooltipNode = document.createElement('div');
+      tooltipNode.className = 'planner-tooltip planner-tooltip--palette';
+      tooltipNode.hidden = true;
+      document.body.appendChild(tooltipNode);
+      return tooltipNode;
+    };
+
+    const hideTooltip = () => {
+      if (!tooltipNode) {
+        return;
+      }
+
+      tooltipNode.hidden = true;
+      tooltipNode.classList.remove('is-visible');
+      tooltipNode.textContent = '';
+    };
+
+    const positionTooltip = (target, event = null) => {
+      const node = ensureTooltipNode();
+      if (!node || !target) {
+        return;
+      }
+
+      const rect = target.getBoundingClientRect();
+      const offsetX = event ? 14 : rect.width / 2;
+      const offsetY = event ? 20 : -8;
+      const baseX = event ? event.clientX : rect.left + rect.width / 2;
+      const baseY = event ? event.clientY : rect.top;
+
+      node.style.left = `${Math.min(window.innerWidth - 20, Math.max(20, baseX + offsetX))}px`;
+      node.style.top = `${Math.max(18, baseY + offsetY)}px`;
+    };
+
+    const showTooltip = (target, event = null) => {
+      const description = target?.dataset.nodeTooltip;
+      const node = ensureTooltipNode();
+      if (!description || !node) {
+        return;
+      }
+
+      node.textContent = description;
+      node.hidden = false;
+      positionTooltip(target, event);
+      window.requestAnimationFrame(() => node.classList.add('is-visible'));
+    };
 
     const getVisibleGroups = () => {
       const query = searchTerm.trim().toLowerCase();
@@ -64,7 +116,7 @@
                 ${group.items.map((item) => `
                   <div class="planner-palette__card" draggable="true" data-node-type="${item.type}">
                     <div class="planner-palette__card-head">
-                      <span class="planner-palette__badge" style="background:${item.accent}20;color:${item.accent}">${Planner.escapeHtml(item.code)}</span>
+                      <span class="planner-palette__badge" tabindex="0" role="note" aria-label="${Planner.escapeHtml(`${item.label}: ${item.description}`)}" data-node-tooltip="${Planner.escapeHtml(item.description)}" style="background:${item.accent}20;color:${item.accent}">${Planner.escapeHtml(item.code)}</span>
                       <button type="button" class="planner-icon-button" title="Add ${Planner.escapeHtml(item.label)}" data-add-node="${item.type}">＋</button>
                     </div>
                     <div class="planner-palette__card-title">${Planner.escapeHtml(item.label)}</div>
@@ -119,12 +171,72 @@
       event.dataTransfer.setData('text/plain', card.dataset.nodeType);
     };
 
+    const handleMouseOver = (event) => {
+      const badge = event.target.closest('[data-node-tooltip]');
+      if (!badge) {
+        return;
+      }
+
+      showTooltip(badge, event);
+    };
+
+    const handleMouseMove = (event) => {
+      const badge = event.target.closest('[data-node-tooltip]');
+      if (!badge || !tooltipNode || tooltipNode.hidden) {
+        return;
+      }
+
+      positionTooltip(badge, event);
+    };
+
+    const handleMouseOut = (event) => {
+      const badge = event.target.closest('[data-node-tooltip]');
+      if (!badge) {
+        return;
+      }
+
+      if (badge.contains(event.relatedTarget)) {
+        return;
+      }
+
+      hideTooltip();
+    };
+
+    const handleFocusIn = (event) => {
+      const badge = event.target.closest('[data-node-tooltip]');
+      if (!badge) {
+        return;
+      }
+
+      showTooltip(badge);
+    };
+
+    const handleFocusOut = (event) => {
+      const badge = event.target.closest('[data-node-tooltip]');
+      if (!badge || badge.contains(event.relatedTarget)) {
+        return;
+      }
+
+      hideTooltip();
+    };
+
     mountNode.addEventListener('input', handleInput);
     mountNode.addEventListener('click', handleClick);
     mountNode.addEventListener('dragstart', handleDragStart);
+    mountNode.addEventListener('mouseover', handleMouseOver);
+    mountNode.addEventListener('mousemove', handleMouseMove);
+    mountNode.addEventListener('mouseout', handleMouseOut);
+    mountNode.addEventListener('focusin', handleFocusIn);
+    mountNode.addEventListener('focusout', handleFocusOut);
     cleanup.push(() => mountNode.removeEventListener('input', handleInput));
     cleanup.push(() => mountNode.removeEventListener('click', handleClick));
     cleanup.push(() => mountNode.removeEventListener('dragstart', handleDragStart));
+    cleanup.push(() => mountNode.removeEventListener('mouseover', handleMouseOver));
+    cleanup.push(() => mountNode.removeEventListener('mousemove', handleMouseMove));
+    cleanup.push(() => mountNode.removeEventListener('mouseout', handleMouseOut));
+    cleanup.push(() => mountNode.removeEventListener('focusin', handleFocusIn));
+    cleanup.push(() => mountNode.removeEventListener('focusout', handleFocusOut));
+    cleanup.push(() => tooltipNode?.remove());
 
     render();
 

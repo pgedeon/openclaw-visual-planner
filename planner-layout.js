@@ -170,6 +170,91 @@
     return { layerById, order, incoming, outgoing };
   };
 
+  // After the initial topological layering pass, run a few lightweight sweeps
+  // that reorder nodes inside each layer using adjacent neighbor positions.
+  // This keeps the implementation dependency-free while noticeably reducing
+  // visual edge crossings on branched graphs.
+  const reduceLayerCrossings = ({
+    sortedLayers = [],
+    incoming = new Map(),
+    outgoing = new Map(),
+    positions = {},
+    marginX = 120,
+    marginY = 120,
+    columnGap = 360,
+    rowGap = 220,
+  }) => {
+    if (sortedLayers.length < 3) {
+      return positions;
+    }
+
+    const layerEntries = sortedLayers.map(([layer, layerNodes]) => [layer, layerNodes.slice()]);
+
+    const getNeighborScore = (nodeId, relationMap) => {
+      const scores = (relationMap.get(nodeId) || [])
+        .map((relatedNodeId) => positions[relatedNodeId]?.y)
+        .filter((value) => Number.isFinite(value));
+
+      if (!scores.length) {
+        return null;
+      }
+
+      return scores.reduce((total, value) => total + value, 0) / scores.length;
+    };
+
+    const sortLayer = (layerNodes, relationMap) => layerNodes.slice().sort((leftNode, rightNode) => {
+      const leftScore = getNeighborScore(leftNode.id, relationMap);
+      const rightScore = getNeighborScore(rightNode.id, relationMap);
+      const leftHasScore = Number.isFinite(leftScore);
+      const rightHasScore = Number.isFinite(rightScore);
+
+      if (leftHasScore && rightHasScore && leftScore !== rightScore) {
+        return leftScore - rightScore;
+      }
+
+      if (leftHasScore !== rightHasScore) {
+        return leftHasScore ? -1 : 1;
+      }
+
+      const leftOutgoing = (outgoing.get(leftNode.id) || []).length;
+      const rightOutgoing = (outgoing.get(rightNode.id) || []).length;
+      if (leftOutgoing !== rightOutgoing) {
+        return rightOutgoing - leftOutgoing;
+      }
+
+      return (positions[leftNode.id]?.y ?? leftNode.y) - (positions[rightNode.id]?.y ?? rightNode.y)
+        || (leftNode.y - rightNode.y)
+        || (leftNode.x - rightNode.x);
+    });
+
+    const applyLayerPositions = (layer, layerNodes) => {
+      layerNodes.forEach((node, index) => {
+        positions[node.id] = {
+          x: marginX + layer * columnGap,
+          y: marginY + index * rowGap,
+        };
+      });
+    };
+
+    for (let iteration = 0; iteration < 3; iteration += 1) {
+      for (let layerIndex = 1; layerIndex < layerEntries.length; layerIndex += 1) {
+        const [layer, layerNodes] = layerEntries[layerIndex];
+        const ordered = sortLayer(layerNodes, incoming);
+        layerEntries[layerIndex][1] = ordered;
+        applyLayerPositions(layer, ordered);
+      }
+
+      for (let layerIndex = layerEntries.length - 2; layerIndex >= 0; layerIndex -= 1) {
+        const [layer, layerNodes] = layerEntries[layerIndex];
+        const ordered = sortLayer(layerNodes, outgoing);
+        layerEntries[layerIndex][1] = ordered;
+        applyLayerPositions(layer, ordered);
+      }
+    }
+
+    return positions;
+  };
+
   const tidyGraph = (nodes = [], edges = [], preferences = {}, options = {}) => {
     const uniqueNodes = uniqueById(nodes);
     if (!uniqueNodes.length) {
@@ -226,6 +311,17 @@
           y: marginY + index * rowGap,
         };
       });
+    });
+
+    reduceLayerCrossings({
+      sortedLayers,
+      incoming,
+      outgoing,
+      positions,
+      marginX,
+      marginY,
+      columnGap,
+      rowGap,
     });
 
     return normalizePositions(positions, preferences);

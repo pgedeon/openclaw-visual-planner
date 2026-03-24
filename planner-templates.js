@@ -253,6 +253,253 @@
         });
       },
     },
+    {
+      id: 'security-audit-loop',
+      label: 'Security Audit Loop',
+      category: 'Security',
+      description: 'Scan, analyze, report, decide, then remediate or escalate before re-scanning.',
+      create() {
+        const scan = Planner.createPlannerNodeRecord('tool', {
+          x: 120,
+          y: 180,
+          data: {
+            title: 'Scan Surface',
+            toolIdentifier: 'security.scan',
+            riskProfile: 'medium',
+          },
+        });
+        const analyze = Planner.createPlannerNodeRecord('workflow-step', {
+          x: 450,
+          y: 180,
+          data: {
+            title: 'Analyze Findings',
+            stepName: 'analyze_findings',
+            stepType: 'prompt',
+            timeoutMinutes: 25,
+            promptPayload: 'Summarize vulnerabilities, affected assets, exploitability, and remediation options.',
+          },
+        });
+        const report = Planner.createPlannerNodeRecord('artifact', {
+          x: 800,
+          y: 180,
+          data: {
+            title: 'Audit Report',
+            filePath: '/artifacts/security/audit-report.md',
+            artifactType: 'document',
+          },
+        });
+        const decision = Planner.createPlannerNodeRecord('decision', {
+          x: 1120,
+          y: 180,
+          data: {
+            title: 'Can Fix Internally?',
+            ruleExpression: 'severity !== "critical" && owner_available === true',
+            evaluationMode: 'manual',
+          },
+        });
+        const fix = Planner.createPlannerNodeRecord('task', {
+          x: 1450,
+          y: 90,
+          data: {
+            title: 'Fix Vulnerabilities',
+            assigneeAgent: 'security-engineer',
+            priority: 'high',
+            status: 'ready',
+          },
+        });
+        const escalate = Planner.createPlannerNodeRecord('approval', {
+          x: 1450,
+          y: 270,
+          data: {
+            title: 'Escalate Findings',
+            approverRole: 'security-lead',
+            escalationBehavior: 'Route critical findings to the incident commander and compliance owner.',
+          },
+        });
+        const rescan = Planner.createPlannerNodeRecord('tool', {
+          x: 1780,
+          y: 180,
+          data: {
+            title: 'Re-Scan Target',
+            toolIdentifier: 'security.rescan',
+            riskProfile: 'medium',
+          },
+        });
+
+        return createTemplateState({
+          id: 'security-audit-loop',
+          title: 'Security Audit Loop',
+          description: 'A remediation loop that captures scanning, analysis, routing, and verification.',
+          nodes: [scan, analyze, report, decision, fix, escalate, rescan],
+          edges: [
+            Planner.createPlannerEdgeRecord({ sourceNodeId: scan.id, sourcePortId: 'out', targetNodeId: analyze.id, targetPortId: 'in', type: 'sequence' }),
+            Planner.createPlannerEdgeRecord({ sourceNodeId: analyze.id, sourcePortId: 'data', targetNodeId: report.id, targetPortId: 'data-in', type: 'data-flow', label: 'Findings summary' }),
+            Planner.createPlannerEdgeRecord({ sourceNodeId: report.id, sourcePortId: 'out', targetNodeId: decision.id, targetPortId: 'in', type: 'sequence' }),
+            Planner.createPlannerEdgeRecord({ sourceNodeId: decision.id, sourcePortId: 'yes', targetNodeId: fix.id, targetPortId: 'in', type: 'conditional-yes', label: 'Fix now' }),
+            Planner.createPlannerEdgeRecord({ sourceNodeId: decision.id, sourcePortId: 'no', targetNodeId: escalate.id, targetPortId: 'in', type: 'conditional-no', label: 'Escalate' }),
+            Planner.createPlannerEdgeRecord({ sourceNodeId: fix.id, sourcePortId: 'out', targetNodeId: rescan.id, targetPortId: 'in', type: 'sequence' }),
+            Planner.createPlannerEdgeRecord({ sourceNodeId: escalate.id, sourcePortId: 'approved', targetNodeId: rescan.id, targetPortId: 'in', type: 'approval-path', label: 'Approved to re-scan' }),
+          ],
+          viewport: { x: 70, y: 40, zoom: 0.7 },
+        });
+      },
+    },
+    {
+      id: 'affiliate-editorial',
+      label: 'Affiliate Editorial',
+      category: 'Publishing',
+      description: 'Research, draft, fact-check, edit, optimize, publish, and monitor an affiliate piece.',
+      create() {
+        return buildLinearTemplate({
+          id: 'affiliate-editorial',
+          title: 'Affiliate Editorial',
+          description: 'A start-to-finish editorial workflow tuned for affiliate content operations.',
+          steps: [
+            {
+              type: 'workflow-step',
+              title: 'Research',
+              data: {
+                stepName: 'research',
+                stepType: 'prompt',
+                timeoutMinutes: 45,
+                expectedOutputs: 'angle brief, source list, product shortlist',
+              },
+            },
+            {
+              type: 'task',
+              title: 'Draft Article',
+              data: {
+                assigneeAgent: 'affiliate-writer',
+                priority: 'high',
+                status: 'ready',
+              },
+            },
+            {
+              type: 'workflow-step',
+              title: 'Fact-Check Claims',
+              data: {
+                stepName: 'fact_check',
+                stepType: 'runbook',
+                timeoutMinutes: 25,
+              },
+            },
+            {
+              type: 'task',
+              title: 'Edit Draft',
+              data: {
+                assigneeAgent: 'editor',
+                priority: 'medium',
+                status: 'backlog',
+              },
+            },
+            {
+              type: 'workflow-step',
+              title: 'SEO Optimize',
+              data: {
+                stepName: 'seo_optimize',
+                stepType: 'prompt',
+                timeoutMinutes: 20,
+                expectedOutputs: 'headline variants, schema notes, internal links',
+              },
+            },
+            {
+              type: 'external-api',
+              title: 'Publish',
+              data: {
+                endpointName: 'WordPress REST API',
+                authenticationRef: 'secrets://wordpress',
+                operationalStatus: 'healthy',
+              },
+            },
+            {
+              type: 'task',
+              title: 'Monitor Performance',
+              data: {
+                assigneeAgent: 'analytics-monitor',
+                priority: 'medium',
+                status: 'backlog',
+              },
+            },
+          ],
+        });
+      },
+    },
+    {
+      id: 'wordpress-publish',
+      label: 'WordPress Publish',
+      category: 'Publishing',
+      description: 'Plan, write, review, optimize, publish, verify, and monitor a WordPress post.',
+      create() {
+        return buildLinearTemplate({
+          id: 'wordpress-publish',
+          title: 'WordPress Publish',
+          description: 'A practical publishing lane for WordPress-ready article production.',
+          steps: [
+            {
+              type: 'memory',
+              title: 'Content Plan',
+              data: {
+                memoryReference: 'memory://content/calendar',
+                projectNote: 'Target keyword, audience intent, CTA, and publishing window.',
+              },
+            },
+            {
+              type: 'task',
+              title: 'Write Draft',
+              data: {
+                assigneeAgent: 'content-writer',
+                priority: 'high',
+                status: 'ready',
+              },
+            },
+            {
+              type: 'approval',
+              title: 'Review Draft',
+              data: {
+                approverRole: 'managing-editor',
+                rejectionHandling: 'Return to drafting with revision notes.',
+              },
+            },
+            {
+              type: 'workflow-step',
+              title: 'SEO Pass',
+              data: {
+                stepName: 'seo_pass',
+                stepType: 'prompt',
+                timeoutMinutes: 15,
+              },
+            },
+            {
+              type: 'external-api',
+              title: 'Publish to WordPress',
+              data: {
+                endpointName: 'WordPress REST API',
+                authenticationRef: 'secrets://wordpress',
+                operationalStatus: 'healthy',
+              },
+            },
+            {
+              type: 'workflow-step',
+              title: 'Verify Live Page',
+              data: {
+                stepName: 'verify_publish',
+                stepType: 'tool',
+                timeoutMinutes: 10,
+              },
+            },
+            {
+              type: 'task',
+              title: 'Monitor After Publish',
+              data: {
+                assigneeAgent: 'site-ops',
+                priority: 'medium',
+                status: 'backlog',
+              },
+            },
+          ],
+        });
+      },
+    },
   ];
 
   const templateMap = new Map(templates.map((template) => [template.id, template]));

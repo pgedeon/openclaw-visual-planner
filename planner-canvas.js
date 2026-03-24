@@ -13,6 +13,7 @@
   const MIN_NODE_HEIGHT = 84;
   const MAX_ZOOM = 2.5;
   const MIN_ZOOM = 0.25;
+  const EMPTY_STATE_TEMPLATE_IDS = ['security-audit-loop', 'affiliate-editorial', 'wordpress-publish'];
 
   const splitSummaryLines = (value, maxChars = 34, maxLines = 2) => {
     const words = String(value || '').trim().split(/\s+/).filter(Boolean);
@@ -93,7 +94,7 @@
     };
   };
 
-  function createPlannerCanvas({ mountNode, store, notify }) {
+  function createPlannerCanvas({ mountNode, store, notify, onApplyTemplate, onStartFromScratch }) {
     let cleanup = [];
     let interaction = null;
     let renderHandle = 0;
@@ -101,6 +102,10 @@
     let spacePressed = false;
     let dragOver = false;
     let edgeEditor = null;
+    let emptyStateDismissed = false;
+    let hasRenderedScene = false;
+    let renderedNodeIds = new Set();
+    let renderedEdgeIds = new Set();
 
     mountNode.innerHTML = `
       <div class="planner-canvas-shell planner-surface">
@@ -119,12 +124,9 @@
             <g data-node-layer="true"></g>
             <g data-preview-layer="true"></g>
           </g>
+          <g class="planner-canvas__ui-layer" data-ui-layer="true"></g>
         </svg>
         <div class="planner-canvas__overlay-layer" data-overlay-layer="true"></div>
-        <div class="planner-canvas__empty" data-canvas-empty="true">
-          <div class="planner-canvas__empty-title">Start with a template or drop a node</div>
-          <div class="planner-canvas__empty-copy">Use the left palette to drag in nodes, then connect them with typed edges.</div>
-        </div>
         <div class="planner-minimap" data-minimap-panel="true">
           <div class="planner-minimap__label">Minimap</div>
           <svg class="planner-minimap__svg" xmlns="http://www.w3.org/2000/svg" data-minimap-svg="true"></svg>
@@ -133,13 +135,14 @@
     `;
 
     const shell = mountNode.querySelector('.planner-canvas-shell');
+    const svg = mountNode.querySelector('.planner-canvas__svg');
     const scene = mountNode.querySelector('[data-scene]');
     const edgeLayer = mountNode.querySelector('[data-edge-layer]');
     const nodeLayer = mountNode.querySelector('[data-node-layer]');
     const previewLayer = mountNode.querySelector('[data-preview-layer]');
+    const uiLayer = mountNode.querySelector('[data-ui-layer]');
     const overlayLayer = mountNode.querySelector('[data-overlay-layer]');
     const statsNode = mountNode.querySelector('[data-canvas-stats]');
-    const emptyNode = mountNode.querySelector('[data-canvas-empty]');
     const minimapPanel = mountNode.querySelector('[data-minimap-panel]');
     const minimapSvg = mountNode.querySelector('[data-minimap-svg]');
 
@@ -292,6 +295,58 @@
       return node;
     };
 
+    const getEmptyStateTemplates = () => {
+      const templates = Planner.getPlannerTemplates?.() || [];
+      const preferred = EMPTY_STATE_TEMPLATE_IDS
+        .map((templateId) => templates.find((template) => template.id === templateId))
+        .filter(Boolean);
+      const fallback = templates.filter((template) => !EMPTY_STATE_TEMPLATE_IDS.includes(template.id));
+      return preferred.concat(fallback).slice(0, 3);
+    };
+
+    const renderEmptyState = () => {
+      const state = store.getState();
+      const shouldShow = !state.document.graph.nodes.length && !emptyStateDismissed;
+
+      if (!uiLayer) {
+        return;
+      }
+
+      if (!shouldShow) {
+        uiLayer.innerHTML = '';
+        return;
+      }
+
+      const rect = svg?.getBoundingClientRect?.() || getCanvasRect();
+      const templates = getEmptyStateTemplates();
+      const panelWidth = Math.min(560, Math.max(340, rect.width - 56));
+      const panelHeight = Math.min(336, Math.max(252, rect.height - 88));
+      const x = Math.max(18, (rect.width - panelWidth) / 2);
+      const y = Math.max(54, (rect.height - panelHeight) / 2);
+
+      uiLayer.innerHTML = `
+        <foreignObject class="planner-canvas__empty-foreign-object" x="${x}" y="${y}" width="${panelWidth}" height="${panelHeight}">
+          <div xmlns="http://www.w3.org/1999/xhtml" class="planner-canvas__empty-panel" data-empty-state-panel="true">
+            <div class="planner-canvas__empty-eyebrow">Canvas Onboarding</div>
+            <div class="planner-canvas__empty-title">Start with a proven workflow</div>
+            <div class="planner-canvas__empty-copy">Use a starter template below or begin with a blank canvas and drag typed nodes in from the palette.</div>
+            <div class="planner-canvas__empty-templates">
+              ${templates.map((template) => `
+                <button type="button" class="planner-canvas__empty-template" data-empty-action="template" data-empty-template="${template.id}">
+                  <span class="planner-canvas__empty-template-title">${Planner.escapeHtml(template.label)}</span>
+                  <span class="planner-canvas__empty-template-meta">${Planner.escapeHtml(template.category)}</span>
+                  <span class="planner-canvas__empty-template-copy">${Planner.escapeHtml(template.description)}</span>
+                </button>
+              `).join('')}
+            </div>
+            <div class="planner-canvas__empty-actions">
+              <button type="button" class="planner-button planner-button--primary" data-empty-action="scratch" data-empty-scratch="true">Start from scratch</button>
+            </div>
+          </div>
+        </foreignObject>
+      `;
+    };
+
     const updateGrid = () => {
       const state = store.getState();
       const viewport = state.viewport;
@@ -314,7 +369,7 @@
       shell.classList.toggle('is-panning', interaction?.type === 'pan');
     };
 
-    const buildEdgeMarkup = (edge, state) => {
+    const buildEdgeMarkup = (edge, state, animateIn = false) => {
       const geometry = getEdgeGeometry(edge, state);
       if (!geometry) {
         return '';
@@ -327,9 +382,9 @@
       const placeholder = !edge.label;
 
       return `
-        <g class="planner-edge ${selected ? 'is-selected' : ''}" data-edge-id="${edge.id}">
+        <g class="planner-edge ${selected ? 'is-selected' : ''} ${animateIn ? 'is-drawing' : ''}" data-edge-id="${edge.id}">
           <path class="planner-edge__hit" d="${geometry.path}"></path>
-          <path class="planner-edge__stroke" d="${geometry.path}" style="stroke:${edgeType.color};color:${edgeType.color};stroke-dasharray:${edgeType.dasharray};" marker-end="url(#planner-arrow)"></path>
+          <path class="planner-edge__stroke" d="${geometry.path}" pathLength="1" style="stroke:${edgeType.color};color:${edgeType.color};stroke-dasharray:${edgeType.dasharray};" marker-end="url(#planner-arrow)"></path>
           ${labelText ? `
             <g class="planner-edge__label ${placeholder ? 'is-placeholder' : ''}" data-edge-label-id="${edge.id}" data-label-x="${geometry.midpoint.x}" data-label-y="${geometry.midpoint.y}" transform="translate(${geometry.midpoint.x - labelWidth / 2} ${geometry.midpoint.y - 12})">
               <rect width="${labelWidth}" height="24" rx="12"></rect>
@@ -376,7 +431,7 @@
       return layout.inputs.concat(layout.outputs).map(renderPort).join('');
     };
 
-    const buildNodeMarkup = (node, state) => {
+    const buildNodeMarkup = (node, state, animateIn = false) => {
       const definition = Planner.getPlannerNodeType(node.type);
       const isSelected = state.selection.type === 'node' && state.selection.nodeIds.includes(node.id);
       const isPrimarySelection = isSelected && state.selection.nodeIds.length === 1;
@@ -389,24 +444,26 @@
       const appearance = resolveNodeAppearance(node, definition);
 
       return `
-        <g class="planner-node ${isSelected ? 'is-selected' : ''}" data-node-id="${node.id}" transform="translate(${node.x} ${node.y})">
-          <rect class="planner-node__body" width="${node.width}" height="${node.height}" rx="18" style="fill:${appearance.bodyFill};stroke:${appearance.bodyStroke};stroke-width:${appearance.strokeWidth};"></rect>
-          <rect class="planner-node__accent" width="${node.width}" height="12" rx="18" style="fill:${appearance.accent};"></rect>
-          <circle class="planner-node__code-disc" cx="22" cy="28" r="14" style="fill:${appearance.accentSoft};stroke:${appearance.accent};"></circle>
-          <text class="planner-node__code" x="22" y="32" text-anchor="middle">${Planner.escapeHtml(definition.code)}</text>
-          <text class="planner-node__title" x="46" y="27" style="fill:${appearance.titleColor};">${Planner.escapeHtml(Planner.truncateText(node.data?.title || definition.label, 28))}</text>
-          <text class="planner-node__subtitle" x="46" y="45" style="fill:${appearance.subtitleColor};">${Planner.escapeHtml(definition.label)}</text>
-          ${summaryLines.map((line, index) => `<text class="planner-node__summary" x="18" y="${74 + index * 18}">${Planner.escapeHtml(line)}</text>`).join('')}
-          <g class="planner-node__status" transform="translate(${Math.max(14, node.width - 102)} 16)">
-            <rect width="86" height="22" rx="11" style="fill:${runtimeStatus.color}22;stroke:${runtimeStatus.color};"></rect>
-            <text x="43" y="15" text-anchor="middle">${Planner.escapeHtml(runtimeStatus.label)}</text>
+        <g class="planner-node ${isSelected ? 'is-selected' : ''} ${animateIn ? 'is-entering' : ''}" data-node-id="${node.id}" transform="translate(${node.x} ${node.y})">
+          <g class="planner-node__content">
+            <rect class="planner-node__body" width="${node.width}" height="${node.height}" rx="18" style="fill:${appearance.bodyFill};stroke:${appearance.bodyStroke};stroke-width:${appearance.strokeWidth};"></rect>
+            <rect class="planner-node__accent" width="${node.width}" height="12" rx="18" style="fill:${appearance.accent};"></rect>
+            <circle class="planner-node__code-disc" cx="22" cy="28" r="14" style="fill:${appearance.accentSoft};stroke:${appearance.accent};"></circle>
+            <text class="planner-node__code" x="22" y="32" text-anchor="middle">${Planner.escapeHtml(definition.code)}</text>
+            <text class="planner-node__title" x="46" y="27" style="fill:${appearance.titleColor};">${Planner.escapeHtml(Planner.truncateText(node.data?.title || definition.label, 28))}</text>
+            <text class="planner-node__subtitle" x="46" y="45" style="fill:${appearance.subtitleColor};">${Planner.escapeHtml(definition.label)}</text>
+            ${summaryLines.map((line, index) => `<text class="planner-node__summary" x="18" y="${74 + index * 18}">${Planner.escapeHtml(line)}</text>`).join('')}
+            <g class="planner-node__status" transform="translate(${Math.max(14, node.width - 102)} 16)">
+              <rect width="86" height="22" rx="11" style="fill:${runtimeStatus.color}22;stroke:${runtimeStatus.color};"></rect>
+              <text x="43" y="15" text-anchor="middle">${Planner.escapeHtml(runtimeStatus.label)}</text>
+            </g>
+            <g class="planner-node__footer" transform="translate(16 ${node.height - 34})">
+              <rect width="${Math.max(node.width - 32, 32)}" height="20" rx="10" style="fill:${appearance.footerFill};stroke:${appearance.footerStroke};"></rect>
+              <text x="12" y="14">${Planner.escapeHtml(Planner.truncateText(summary || definition.description, 42))}</text>
+            </g>
+            ${buildPorts(node, isSelected)}
+            ${isPrimarySelection ? buildResizeHandles(node) : ''}
           </g>
-          <g class="planner-node__footer" transform="translate(16 ${node.height - 34})">
-            <rect width="${Math.max(node.width - 32, 32)}" height="20" rx="10" style="fill:${appearance.footerFill};stroke:${appearance.footerStroke};"></rect>
-            <text x="12" y="14">${Planner.escapeHtml(Planner.truncateText(summary || definition.description, 42))}</text>
-          </g>
-          ${buildPorts(node, isSelected)}
-          ${isPrimarySelection ? buildResizeHandles(node) : ''}
         </g>
       `;
     };
@@ -547,21 +604,32 @@
       const state = store.getState();
       const shouldRebuildScene = !['viewport', 'preview', 'dragover', 'history:', 'meta:'].some((prefix) => String(reason).startsWith(prefix));
 
+      if (state.document.graph.nodes.length) {
+        emptyStateDismissed = false;
+      }
+
       updateGrid();
       scene.setAttribute('transform', `translate(${state.viewport.x} ${state.viewport.y}) scale(${state.viewport.zoom})`);
 
       if (shouldRebuildScene) {
-        edgeLayer.innerHTML = state.document.graph.edges.map((edge) => buildEdgeMarkup(edge, state)).join('');
-        nodeLayer.innerHTML = state.document.graph.nodes.map((node) => buildNodeMarkup(node, state)).join('');
+        const nextNodeIds = new Set(state.document.graph.nodes.map((node) => node.id));
+        const nextEdgeIds = new Set(state.document.graph.edges.map((edge) => edge.id));
+
+        edgeLayer.innerHTML = state.document.graph.edges.map((edge) => buildEdgeMarkup(edge, state, hasRenderedScene && !renderedEdgeIds.has(edge.id))).join('');
+        nodeLayer.innerHTML = state.document.graph.nodes.map((node) => buildNodeMarkup(node, state, hasRenderedScene && !renderedNodeIds.has(node.id))).join('');
+
+        renderedNodeIds = nextNodeIds;
+        renderedEdgeIds = nextEdgeIds;
+        hasRenderedScene = true;
       }
 
       renderPreview();
       renderOverlay();
+      renderEmptyState();
       renderMinimap();
 
       const selectionLabel = state.selection.nodeIds.length ? ` · ${state.selection.nodeIds.length} selected` : '';
       statsNode.textContent = `${state.document.graph.nodes.length} nodes · ${state.document.graph.edges.length} edges${selectionLabel} · ${Math.round(state.viewport.zoom * 100)}%`;
-      emptyNode.hidden = state.document.graph.nodes.length > 0;
     };
 
     const scheduleRender = (reason = 'state') => {
@@ -969,6 +1037,10 @@
         return;
       }
 
+      if (event.target.closest('[data-empty-action]')) {
+        return;
+      }
+
       if (edgeEditor) {
         closeEdgeEditor({ save: true });
       }
@@ -1037,6 +1109,25 @@
       event.preventDefault();
       event.stopPropagation();
       openEdgeEditor(edgeLabel.dataset.edgeLabelId);
+    };
+
+    const handleClick = (event) => {
+      const templateButton = event.target.closest('[data-empty-template]');
+      if (templateButton?.dataset.emptyTemplate) {
+        emptyStateDismissed = false;
+        onApplyTemplate?.(templateButton.dataset.emptyTemplate);
+        return;
+      }
+
+      const scratchButton = event.target.closest('[data-empty-scratch]');
+      if (!scratchButton) {
+        return;
+      }
+
+      emptyStateDismissed = true;
+      onStartFromScratch?.();
+      notify?.('Blank canvas ready — drag in a node or load a template.', 'info');
+      scheduleRender('empty-state:dismiss');
     };
 
     const handleWheel = (event) => {
@@ -1139,6 +1230,10 @@
       scheduleRender('preview');
     };
 
+    const handleResize = () => {
+      scheduleRender('viewport:resize');
+    };
+
     const handleOverlayInput = (event) => {
       const input = event.target.closest('[data-edge-editor-input="true"]');
       if (!input || !edgeEditor) {
@@ -1178,6 +1273,7 @@
     };
 
     shell.addEventListener('mousedown', handleMouseDown);
+    shell.addEventListener('click', handleClick);
     shell.addEventListener('dblclick', handleDoubleClick);
     shell.addEventListener('wheel', handleWheel, { passive: false });
     shell.addEventListener('dragenter', handleDragEnter);
@@ -1195,6 +1291,7 @@
     window.addEventListener('blur', handleWindowBlur);
 
     cleanup.push(() => shell.removeEventListener('mousedown', handleMouseDown));
+    cleanup.push(() => shell.removeEventListener('click', handleClick));
     cleanup.push(() => shell.removeEventListener('dblclick', handleDoubleClick));
     cleanup.push(() => shell.removeEventListener('wheel', handleWheel));
     cleanup.push(() => shell.removeEventListener('dragenter', handleDragEnter));
@@ -1210,6 +1307,18 @@
     cleanup.push(() => window.removeEventListener('keydown', handleKeyDown));
     cleanup.push(() => window.removeEventListener('keyup', handleKeyUp));
     cleanup.push(() => window.removeEventListener('blur', handleWindowBlur));
+
+    if (typeof ResizeObserver === 'function') {
+      const resizeObserver = new ResizeObserver(() => {
+        scheduleRender('viewport:resize');
+      });
+      resizeObserver.observe(shell);
+      cleanup.push(() => resizeObserver.disconnect());
+    } else {
+      window.addEventListener('resize', handleResize);
+      cleanup.push(() => window.removeEventListener('resize', handleResize));
+    }
+
     cleanup.push(store.subscribe((state, meta) => {
       scheduleRender(meta.reason);
     }));
@@ -1224,6 +1333,9 @@
       fitToGraph,
       focusEntity,
       getViewportCenterWorld,
+      requestRender(reason = 'state') {
+        scheduleRender(reason);
+      },
       destroy() {
         cleanup.forEach((fn) => fn());
         cleanup = [];
