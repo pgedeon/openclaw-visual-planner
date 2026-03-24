@@ -114,6 +114,10 @@
         nodeIds: [],
         edgeId: null,
       },
+      clipboard: {
+        fragment: null,
+        copiedAt: null,
+      },
       ui: {
         mode: 'workflow',
         trayTab: 'validation',
@@ -139,6 +143,8 @@
   const updateTimestamp = (state) => {
     state.document.metadata.updatedAt = new Date().toISOString();
   };
+
+  const uniqueIds = (values = []) => Array.from(new Set((values || []).filter(Boolean)));
 
   const findNodeIndex = (state, nodeId) => state.document.graph.nodes.findIndex((node) => node.id === nodeId);
   const findEdgeIndex = (state, edgeId) => state.document.graph.edges.findIndex((edge) => edge.id === edgeId);
@@ -307,10 +313,33 @@
         },
         selectNode(nodeId) {
           return mutate((draft) => {
-            draft.selection.type = 'node';
+            draft.selection.type = nodeId ? 'node' : 'none';
             draft.selection.nodeIds = nodeId ? [nodeId] : [];
             draft.selection.edgeId = null;
           }, { reason: 'selection:node' });
+        },
+        selectNodes(nodeIds, options = {}) {
+          return mutate((draft) => {
+            const nextIds = uniqueIds(nodeIds);
+            if (options.additive) {
+              draft.selection.nodeIds = uniqueIds(draft.selection.nodeIds.concat(nextIds));
+            } else {
+              draft.selection.nodeIds = nextIds;
+            }
+            draft.selection.type = draft.selection.nodeIds.length ? 'node' : 'none';
+            draft.selection.edgeId = null;
+          }, { reason: 'selection:nodes' });
+        },
+        toggleNodeSelection(nodeId) {
+          return mutate((draft) => {
+            const isSelected = draft.selection.nodeIds.includes(nodeId);
+            draft.selection.nodeIds = isSelected
+              ? draft.selection.nodeIds.filter((id) => id !== nodeId)
+              : draft.selection.nodeIds.concat(nodeId);
+            draft.selection.nodeIds = uniqueIds(draft.selection.nodeIds);
+            draft.selection.type = draft.selection.nodeIds.length ? 'node' : 'none';
+            draft.selection.edgeId = null;
+          }, { reason: 'selection:toggle-node' });
         },
         selectEdge(edgeId) {
           return mutate((draft) => {
@@ -325,6 +354,12 @@
             draft.selection.nodeIds = [];
             draft.selection.edgeId = null;
           }, { reason: 'selection:clear' });
+        },
+        setClipboard(fragment) {
+          return mutate((draft) => {
+            draft.clipboard.fragment = fragment ? clone(fragment) : null;
+            draft.clipboard.copiedAt = fragment ? new Date().toISOString() : null;
+          }, { reason: 'clipboard:update' });
         },
         addNode(node, options = {}) {
           return mutate((draft) => {
@@ -356,6 +391,31 @@
             updateTimestamp(draft);
             draft.meta.dirty = options.dirty ?? true;
           }, { history: Boolean(options.history), reason: options.reason || 'node:update' });
+        },
+        updateNodes(nodeIds, patch, options = {}) {
+          return mutate((draft) => {
+            const selectedIds = uniqueIds(nodeIds);
+            if (!selectedIds.length) {
+              return draft;
+            }
+
+            draft.document.graph.nodes.forEach((node) => {
+              if (!selectedIds.includes(node.id)) {
+                return;
+              }
+
+              if (typeof patch === 'function') {
+                patch(node);
+              } else {
+                merge(node, patch || {});
+              }
+
+              node.updatedAt = new Date().toISOString();
+            });
+
+            updateTimestamp(draft);
+            draft.meta.dirty = options.dirty ?? true;
+          }, { history: Boolean(options.history), reason: options.reason || 'node:update-many' });
         },
         moveNodes(nodeIds, delta, options = {}) {
           return mutate((draft) => {
@@ -401,6 +461,44 @@
             draft.meta.dirty = true;
           }, { history: options.history !== false, reason: options.reason || 'node:remove' });
         },
+        removeNodes(nodeIds, options = {}) {
+          const selectedIds = uniqueIds(nodeIds);
+          return mutate((draft) => {
+            if (!selectedIds.length) {
+              return draft;
+            }
+
+            draft.document.graph.nodes = draft.document.graph.nodes.filter((node) => !selectedIds.includes(node.id));
+            draft.document.graph.edges = draft.document.graph.edges.filter((edge) => !selectedIds.includes(edge.sourceNodeId) && !selectedIds.includes(edge.targetNodeId));
+
+            draft.selection.nodeIds = draft.selection.nodeIds.filter((nodeId) => !selectedIds.includes(nodeId));
+            if (!draft.selection.nodeIds.length) {
+              draft.selection.type = 'none';
+            }
+
+            updateTimestamp(draft);
+            draft.meta.dirty = true;
+          }, { history: options.history !== false, reason: options.reason || 'node:remove-many' });
+        },
+        insertGraphFragment(fragment, options = {}) {
+          return mutate((draft) => {
+            const nodes = Array.isArray(fragment?.nodes) ? fragment.nodes.map((node) => clone(node)) : [];
+            const edges = Array.isArray(fragment?.edges) ? fragment.edges.map((edge) => clone(edge)) : [];
+
+            if (!nodes.length && !edges.length) {
+              return draft;
+            }
+
+            draft.document.graph.nodes.push(...nodes);
+            draft.document.graph.edges.push(...edges);
+            draft.selection.type = nodes.length ? 'node' : (edges.length ? 'edge' : 'none');
+            draft.selection.nodeIds = nodes.map((node) => node.id);
+            draft.selection.edgeId = edges.length === 1 && !nodes.length ? edges[0].id : null;
+
+            updateTimestamp(draft);
+            draft.meta.dirty = options.dirty ?? true;
+          }, { history: options.history !== false, reason: options.reason || 'graph:insert-fragment' });
+        },
         addEdge(edge, options = {}) {
           return mutate((draft) => {
             draft.document.graph.edges.push(clone(edge));
@@ -445,7 +543,11 @@
         },
         removeSelection() {
           if (state.selection.type === 'node' && state.selection.nodeIds.length) {
-            return store.actions.removeNode(state.selection.nodeIds[0]);
+            if (state.selection.nodeIds.length === 1) {
+              return store.actions.removeNode(state.selection.nodeIds[0]);
+            }
+
+            return store.actions.removeNodes(state.selection.nodeIds);
           }
 
           if (state.selection.type === 'edge' && state.selection.edgeId) {

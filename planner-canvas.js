@@ -100,11 +100,12 @@
     let pendingReason = 'initial';
     let spacePressed = false;
     let dragOver = false;
+    let edgeEditor = null;
 
     mountNode.innerHTML = `
       <div class="planner-canvas-shell planner-surface">
         <div class="planner-canvas__hud">
-          <div class="planner-canvas__hint">Drag nodes in · Scroll to zoom · Space + drag to pan</div>
+          <div class="planner-canvas__hint">Drag nodes in · Drag background to box-select · Space + drag to pan</div>
           <div class="planner-canvas__stats" data-canvas-stats="true"></div>
         </div>
         <svg class="planner-canvas__svg" xmlns="http://www.w3.org/2000/svg" aria-label="Planner canvas">
@@ -119,6 +120,7 @@
             <g data-preview-layer="true"></g>
           </g>
         </svg>
+        <div class="planner-canvas__overlay-layer" data-overlay-layer="true"></div>
         <div class="planner-canvas__empty" data-canvas-empty="true">
           <div class="planner-canvas__empty-title">Start with a template or drop a node</div>
           <div class="planner-canvas__empty-copy">Use the left palette to drag in nodes, then connect them with typed edges.</div>
@@ -135,6 +137,7 @@
     const edgeLayer = mountNode.querySelector('[data-edge-layer]');
     const nodeLayer = mountNode.querySelector('[data-node-layer]');
     const previewLayer = mountNode.querySelector('[data-preview-layer]');
+    const overlayLayer = mountNode.querySelector('[data-overlay-layer]');
     const statsNode = mountNode.querySelector('[data-canvas-stats]');
     const emptyNode = mountNode.querySelector('[data-canvas-empty]');
     const minimapPanel = mountNode.querySelector('[data-minimap-panel]');
@@ -151,6 +154,77 @@
         x: (clientX - rect.left - viewport.x) / viewport.zoom,
         y: (clientY - rect.top - viewport.y) / viewport.zoom,
       };
+    };
+
+    const screenFromWorld = (worldX, worldY) => {
+      const viewport = getViewport();
+      return {
+        x: worldX * viewport.zoom + viewport.x,
+        y: worldY * viewport.zoom + viewport.y,
+      };
+    };
+
+    const normalizeHexColor = (value, fallback) => {
+      const raw = String(value || '').trim();
+      if (!/^#([a-f0-9]{3}|[a-f0-9]{6})$/i.test(raw)) {
+        return fallback;
+      }
+
+      if (raw.length === 4) {
+        return `#${raw.slice(1).split('').map((character) => `${character}${character}`).join('')}`.toLowerCase();
+      }
+
+      return raw.toLowerCase();
+    };
+
+    const hexToRgba = (hex, alpha) => {
+      const normalized = normalizeHexColor(hex, '#60cdff').replace('#', '');
+      const red = Number.parseInt(normalized.slice(0, 2), 16);
+      const green = Number.parseInt(normalized.slice(2, 4), 16);
+      const blue = Number.parseInt(normalized.slice(4, 6), 16);
+      return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+    };
+
+    const resolveNodeAppearance = (node, definition) => {
+      const accent = normalizeHexColor(node.data?.visualColor, definition.accent);
+      const style = String(node.data?.visualStyle || 'default').trim().toLowerCase();
+
+      const appearance = {
+        accent,
+        accentSoft: hexToRgba(accent, 0.18),
+        bodyFill: 'rgba(21, 21, 23, 0.95)',
+        bodyStroke: 'rgba(255, 255, 255, 0.08)',
+        footerFill: 'rgba(255, 255, 255, 0.04)',
+        footerStroke: 'rgba(255, 255, 255, 0.06)',
+        titleColor: 'var(--planner-text)',
+        subtitleColor: 'var(--planner-text-secondary)',
+        strokeWidth: 1.35,
+      };
+
+      if (style === 'muted') {
+        appearance.bodyFill = 'rgba(16, 18, 22, 0.9)';
+        appearance.bodyStroke = hexToRgba(accent, 0.28);
+        appearance.footerFill = 'rgba(255, 255, 255, 0.03)';
+      }
+
+      if (style === 'emphasis') {
+        appearance.bodyFill = hexToRgba(accent, 0.12);
+        appearance.bodyStroke = hexToRgba(accent, 0.55);
+        appearance.footerFill = hexToRgba(accent, 0.14);
+        appearance.footerStroke = hexToRgba(accent, 0.22);
+        appearance.strokeWidth = 1.7;
+      }
+
+      if (style === 'contrast') {
+        appearance.bodyFill = 'rgba(7, 10, 14, 0.98)';
+        appearance.bodyStroke = hexToRgba(accent, 0.72);
+        appearance.footerFill = 'rgba(255, 255, 255, 0.09)';
+        appearance.footerStroke = hexToRgba(accent, 0.34);
+        appearance.subtitleColor = 'rgba(255, 255, 255, 0.82)';
+        appearance.strokeWidth = 1.9;
+      }
+
+      return appearance;
     };
 
     const snapValue = (value) => {
@@ -190,6 +264,25 @@
       };
     };
 
+    const getEdgeGeometry = (edge, state = store.getState()) => {
+      const sourceNode = state.document.graph.nodes.find((node) => node.id === edge.sourceNodeId);
+      const targetNode = state.document.graph.nodes.find((node) => node.id === edge.targetNodeId);
+      if (!sourceNode || !targetNode) {
+        return null;
+      }
+
+      const sourcePoint = getPortWorldPoint(sourceNode, 'output', edge.sourcePortId);
+      const targetPoint = getPortWorldPoint(targetNode, 'input', edge.targetPortId);
+      return {
+        sourceNode,
+        targetNode,
+        sourcePoint,
+        targetPoint,
+        path: Planner.computePlannerEdgePath(sourcePoint, targetPoint),
+        midpoint: Planner.computePlannerEdgeMidpoint(sourcePoint, targetPoint),
+      };
+    };
+
     const createNodeAtPosition = (type, position) => {
       const node = Planner.createPlannerNodeRecord(type, {
         x: snapValue(position.x),
@@ -222,29 +315,25 @@
     };
 
     const buildEdgeMarkup = (edge, state) => {
-      const sourceNode = state.document.graph.nodes.find((node) => node.id === edge.sourceNodeId);
-      const targetNode = state.document.graph.nodes.find((node) => node.id === edge.targetNodeId);
-      if (!sourceNode || !targetNode) {
+      const geometry = getEdgeGeometry(edge, state);
+      if (!geometry) {
         return '';
       }
 
-      const sourcePoint = getPortWorldPoint(sourceNode, 'output', edge.sourcePortId);
-      const targetPoint = getPortWorldPoint(targetNode, 'input', edge.targetPortId);
       const edgeType = Planner.getPlannerEdgeType(edge.type);
-      const d = Planner.computePlannerEdgePath(sourcePoint, targetPoint);
-      const midpoint = Planner.computePlannerEdgeMidpoint(sourcePoint, targetPoint);
-      const label = edge.label || (edge.type === 'sequence' ? '' : edgeType.shortLabel);
       const selected = state.selection.type === 'edge' && state.selection.edgeId === edge.id;
-      const labelWidth = Math.max(60, label.length * 7 + 18);
+      const labelText = edge.label || (edge.type === 'sequence' ? (selected ? 'Double-click to label' : '') : edgeType.shortLabel);
+      const labelWidth = Math.max(60, labelText.length * 7 + 18);
+      const placeholder = !edge.label;
 
       return `
         <g class="planner-edge ${selected ? 'is-selected' : ''}" data-edge-id="${edge.id}">
-          <path class="planner-edge__hit" d="${d}"></path>
-          <path class="planner-edge__stroke" d="${d}" style="stroke:${edgeType.color};color:${edgeType.color};stroke-dasharray:${edgeType.dasharray};" marker-end="url(#planner-arrow)"></path>
-          ${label ? `
-            <g class="planner-edge__label" transform="translate(${midpoint.x - labelWidth / 2} ${midpoint.y - 12})">
+          <path class="planner-edge__hit" d="${geometry.path}"></path>
+          <path class="planner-edge__stroke" d="${geometry.path}" style="stroke:${edgeType.color};color:${edgeType.color};stroke-dasharray:${edgeType.dasharray};" marker-end="url(#planner-arrow)"></path>
+          ${labelText ? `
+            <g class="planner-edge__label ${placeholder ? 'is-placeholder' : ''}" data-edge-label-id="${edge.id}" data-label-x="${geometry.midpoint.x}" data-label-y="${geometry.midpoint.y}" transform="translate(${geometry.midpoint.x - labelWidth / 2} ${geometry.midpoint.y - 12})">
               <rect width="${labelWidth}" height="24" rx="12"></rect>
-              <text x="${labelWidth / 2}" y="15" text-anchor="middle">${Planner.escapeHtml(label)}</text>
+              <text x="${labelWidth / 2}" y="15" text-anchor="middle">${Planner.escapeHtml(labelText)}</text>
             </g>
           ` : ''}
         </g>
@@ -290,36 +379,55 @@
     const buildNodeMarkup = (node, state) => {
       const definition = Planner.getPlannerNodeType(node.type);
       const isSelected = state.selection.type === 'node' && state.selection.nodeIds.includes(node.id);
+      const isPrimarySelection = isSelected && state.selection.nodeIds.length === 1;
       const summary = Planner.getPlannerNodeSummary(node);
       const summaryLines = splitSummaryLines(summary);
       const runtimeStatusId = state.runtime.enabled ? (state.runtime.statuses[node.id] || 'queued') : 'idle';
       const runtimeStatus = Planner.getPlannerRuntimeStatus(runtimeStatusId);
+      const appearance = resolveNodeAppearance(node, definition);
 
       return `
         <g class="planner-node ${isSelected ? 'is-selected' : ''}" data-node-id="${node.id}" transform="translate(${node.x} ${node.y})">
-          <rect class="planner-node__body" width="${node.width}" height="${node.height}" rx="18"></rect>
-          <rect class="planner-node__accent" width="${node.width}" height="12" rx="18" style="fill:${definition.accent};"></rect>
-          <circle class="planner-node__code-disc" cx="22" cy="28" r="14" style="fill:${definition.accent}1f;stroke:${definition.accent};"></circle>
+          <rect class="planner-node__body" width="${node.width}" height="${node.height}" rx="18" style="fill:${appearance.bodyFill};stroke:${appearance.bodyStroke};stroke-width:${appearance.strokeWidth};"></rect>
+          <rect class="planner-node__accent" width="${node.width}" height="12" rx="18" style="fill:${appearance.accent};"></rect>
+          <circle class="planner-node__code-disc" cx="22" cy="28" r="14" style="fill:${appearance.accentSoft};stroke:${appearance.accent};"></circle>
           <text class="planner-node__code" x="22" y="32" text-anchor="middle">${Planner.escapeHtml(definition.code)}</text>
-          <text class="planner-node__title" x="46" y="27">${Planner.escapeHtml(Planner.truncateText(node.data?.title || definition.label, 28))}</text>
-          <text class="planner-node__subtitle" x="46" y="45">${Planner.escapeHtml(definition.label)}</text>
+          <text class="planner-node__title" x="46" y="27" style="fill:${appearance.titleColor};">${Planner.escapeHtml(Planner.truncateText(node.data?.title || definition.label, 28))}</text>
+          <text class="planner-node__subtitle" x="46" y="45" style="fill:${appearance.subtitleColor};">${Planner.escapeHtml(definition.label)}</text>
           ${summaryLines.map((line, index) => `<text class="planner-node__summary" x="18" y="${74 + index * 18}">${Planner.escapeHtml(line)}</text>`).join('')}
           <g class="planner-node__status" transform="translate(${Math.max(14, node.width - 102)} 16)">
             <rect width="86" height="22" rx="11" style="fill:${runtimeStatus.color}22;stroke:${runtimeStatus.color};"></rect>
             <text x="43" y="15" text-anchor="middle">${Planner.escapeHtml(runtimeStatus.label)}</text>
           </g>
           <g class="planner-node__footer" transform="translate(16 ${node.height - 34})">
-            <rect width="${Math.max(node.width - 32, 32)}" height="20" rx="10"></rect>
+            <rect width="${Math.max(node.width - 32, 32)}" height="20" rx="10" style="fill:${appearance.footerFill};stroke:${appearance.footerStroke};"></rect>
             <text x="12" y="14">${Planner.escapeHtml(Planner.truncateText(summary || definition.description, 42))}</text>
           </g>
           ${buildPorts(node, isSelected)}
-          ${isSelected ? buildResizeHandles(node) : ''}
+          ${isPrimarySelection ? buildResizeHandles(node) : ''}
         </g>
       `;
     };
 
     const renderPreview = () => {
-      if (!interaction || interaction.type !== 'connect') {
+      if (!interaction) {
+        previewLayer.innerHTML = '';
+        return;
+      }
+
+      if (interaction.type === 'marquee') {
+        const x = Math.min(interaction.startWorld.x, interaction.currentWorld.x);
+        const y = Math.min(interaction.startWorld.y, interaction.currentWorld.y);
+        const width = Math.abs(interaction.currentWorld.x - interaction.startWorld.x);
+        const height = Math.abs(interaction.currentWorld.y - interaction.startWorld.y);
+
+        previewLayer.innerHTML = `
+          <rect class="planner-selection-box" x="${x}" y="${y}" width="${width}" height="${height}" rx="14"></rect>
+        `;
+        return;
+      }
+
+      if (interaction.type !== 'connect') {
         previewLayer.innerHTML = '';
         return;
       }
@@ -339,6 +447,41 @@
       previewLayer.innerHTML = `
         <path class="planner-edge__preview" d="${d}"></path>
       `;
+    };
+
+    const renderOverlay = () => {
+      const state = store.getState();
+      overlayLayer.innerHTML = '';
+
+      if (!edgeEditor) {
+        return;
+      }
+
+      const edge = state.document.graph.edges.find((item) => item.id === edgeEditor.edgeId);
+      const geometry = edge ? getEdgeGeometry(edge, state) : null;
+      if (!edge || !geometry) {
+        edgeEditor = null;
+        return;
+      }
+
+      const screenPoint = screenFromWorld(geometry.midpoint.x, geometry.midpoint.y);
+
+      overlayLayer.innerHTML = `
+        <div class="planner-canvas__edge-editor" data-edge-editor-shell="true" style="left:${screenPoint.x}px;top:${screenPoint.y}px;">
+          <input class="planner-input planner-canvas__edge-input" type="text" value="${Planner.escapeHtml(edgeEditor.value)}" data-edge-editor-input="true" aria-label="Edit edge label" />
+        </div>
+      `;
+
+      if (edgeEditor.shouldFocus) {
+        const input = overlayLayer.querySelector('[data-edge-editor-input="true"]');
+        if (input) {
+          window.requestAnimationFrame(() => {
+            input.focus();
+            input.select();
+          });
+        }
+        edgeEditor.shouldFocus = false;
+      }
     };
 
     const renderMinimap = () => {
@@ -411,9 +554,11 @@
       }
 
       renderPreview();
+      renderOverlay();
       renderMinimap();
 
-      statsNode.textContent = `${state.document.graph.nodes.length} nodes · ${state.document.graph.edges.length} edges · ${Math.round(state.viewport.zoom * 100)}%`;
+      const selectionLabel = state.selection.nodeIds.length ? ` · ${state.selection.nodeIds.length} selected` : '';
+      statsNode.textContent = `${state.document.graph.nodes.length} nodes · ${state.document.graph.edges.length} edges${selectionLabel} · ${Math.round(state.viewport.zoom * 100)}%`;
       emptyNode.hidden = state.document.graph.nodes.length > 0;
     };
 
@@ -479,18 +624,42 @@
       scheduleRender('preview');
     };
 
+    const beginMarquee = (event) => {
+      const startWorld = worldFromClient(event.clientX, event.clientY);
+      interaction = {
+        type: 'marquee',
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        currentClientX: event.clientX,
+        currentClientY: event.clientY,
+        startWorld,
+        currentWorld: startWorld,
+        preserveSelection: event.shiftKey || event.metaKey || event.ctrlKey,
+      };
+      scheduleRender('preview');
+    };
+
     const beginMove = (event, nodeId) => {
-      const node = getNodeById(nodeId);
-      if (!node) {
+      const state = store.getState();
+      const selectedNodeIds = state.selection.type === 'node' && state.selection.nodeIds.includes(nodeId)
+        ? state.selection.nodeIds.slice()
+        : [nodeId];
+      const originNodes = Object.fromEntries(
+        selectedNodeIds
+          .map((selectedNodeId) => [selectedNodeId, Planner.clonePlannerValue(getNodeById(selectedNodeId))])
+          .filter(([, node]) => Boolean(node)),
+      );
+
+      if (!Object.keys(originNodes).length) {
         return;
       }
 
       const startWorld = worldFromClient(event.clientX, event.clientY);
       interaction = {
         type: 'move',
-        nodeId,
+        nodeIds: selectedNodeIds,
         startWorld,
-        originNode: Planner.clonePlannerValue(node),
+        originNodes,
         historySnapshot: store.snapshot(),
         checkpointPushed: false,
       };
@@ -524,24 +693,69 @@
       scheduleRender('preview');
     };
 
+    const closeEdgeEditor = ({ save = false } = {}) => {
+      if (!edgeEditor) {
+        return;
+      }
+
+      const currentEdge = store.getState().document.graph.edges.find((item) => item.id === edgeEditor.edgeId);
+      const nextValue = String(edgeEditor.value || '').trim();
+      const previousEditor = edgeEditor;
+      edgeEditor = null;
+
+      if (save && currentEdge && String(currentEdge.label || '') !== nextValue) {
+        store.actions.updateEdge(previousEditor.edgeId, {
+          label: nextValue,
+        }, { history: true, reason: 'edge:label-inline' });
+      }
+
+      scheduleRender('edge-editor');
+    };
+
+    const openEdgeEditor = (edgeId) => {
+      const edge = store.getState().document.graph.edges.find((item) => item.id === edgeId);
+      if (!edge) {
+        return;
+      }
+
+      store.actions.selectEdge(edgeId);
+      edgeEditor = {
+        edgeId,
+        value: edge.label || '',
+        shouldFocus: true,
+      };
+      scheduleRender('edge-editor');
+    };
+
     const updateMoveInteraction = (event) => {
-      const node = getNodeById(interaction.nodeId);
-      if (!node) {
+      const originNodes = Object.values(interaction.originNodes || {});
+      if (!originNodes.length) {
         return;
       }
 
       const world = worldFromClient(event.clientX, event.clientY);
       const deltaX = world.x - interaction.startWorld.x;
       const deltaY = world.y - interaction.startWorld.y;
-      const nextX = snapValue(interaction.originNode.x + deltaX);
-      const nextY = snapValue(interaction.originNode.y + deltaY);
+      const nextPositions = Object.fromEntries(originNodes.map((node) => [node.id, {
+        x: snapValue(node.x + deltaX),
+        y: snapValue(node.y + deltaY),
+      }]));
+      const hasMoved = originNodes.some((node) => nextPositions[node.id].x !== node.x || nextPositions[node.id].y !== node.y);
 
-      if (!interaction.checkpointPushed && (nextX !== interaction.originNode.x || nextY !== interaction.originNode.y)) {
-        store.pushHistorySnapshot(interaction.historySnapshot, 'Move node');
+      if (!interaction.checkpointPushed && hasMoved) {
+        store.pushHistorySnapshot(interaction.historySnapshot, `Move ${originNodes.length > 1 ? 'nodes' : 'node'}`);
         interaction.checkpointPushed = true;
       }
 
-      store.actions.updateNode(interaction.nodeId, { x: nextX, y: nextY }, { history: false, reason: 'node:move' });
+      store.actions.updateNodes(interaction.nodeIds, (node) => {
+        const position = nextPositions[node.id];
+        if (!position) {
+          return;
+        }
+
+        node.x = position.x;
+        node.y = position.y;
+      }, { history: false, reason: 'node:move' });
     };
 
     const updateResizeInteraction = (event) => {
@@ -589,6 +803,36 @@
       }
 
       store.actions.resizeNode(interaction.nodeId, nextBounds, { history: false, reason: 'node:resize' });
+    };
+
+    const completeMarqueeSelection = () => {
+      const state = store.getState();
+      const minX = Math.min(interaction.startWorld.x, interaction.currentWorld.x);
+      const minY = Math.min(interaction.startWorld.y, interaction.currentWorld.y);
+      const maxX = Math.max(interaction.startWorld.x, interaction.currentWorld.x);
+      const maxY = Math.max(interaction.startWorld.y, interaction.currentWorld.y);
+
+      const hitNodeIds = state.document.graph.nodes
+        .filter((node) => !(node.x > maxX || node.x + node.width < minX || node.y > maxY || node.y + node.height < minY))
+        .map((node) => node.id);
+
+      if (Math.abs(interaction.currentClientX - interaction.startClientX) < 4 && Math.abs(interaction.currentClientY - interaction.startClientY) < 4) {
+        if (!interaction.preserveSelection) {
+          store.actions.clearSelection();
+        }
+        interaction = null;
+        scheduleRender('preview');
+        return;
+      }
+
+      if (interaction.preserveSelection) {
+        store.actions.selectNodes(state.selection.nodeIds.concat(hitNodeIds));
+      } else {
+        store.actions.selectNodes(hitNodeIds);
+      }
+
+      interaction = null;
+      scheduleRender('preview');
     };
 
     const updateConnectInteraction = (event) => {
@@ -692,6 +936,14 @@
 
       if (interaction.type === 'connect') {
         updateConnectInteraction(event);
+        return;
+      }
+
+      if (interaction.type === 'marquee') {
+        interaction.currentClientX = event.clientX;
+        interaction.currentClientY = event.clientY;
+        interaction.currentWorld = worldFromClient(event.clientX, event.clientY);
+        scheduleRender('preview');
       }
     };
 
@@ -701,11 +953,24 @@
         return;
       }
 
+      if (interaction?.type === 'marquee') {
+        completeMarqueeSelection();
+        return;
+      }
+
       interaction = null;
       scheduleRender('preview');
     };
 
     const handleMouseDown = (event) => {
+      if (event.target.closest('[data-edge-editor-shell="true"]')) {
+        return;
+      }
+
+      if (edgeEditor) {
+        closeEdgeEditor({ save: true });
+      }
+
       if (event.button === 1 || spacePressed) {
         event.preventDefault();
         beginPan(event);
@@ -741,12 +1006,35 @@
       const node = event.target.closest('[data-node-id]');
       if (node) {
         event.preventDefault();
-        store.actions.selectNode(node.dataset.nodeId);
+        const nodeId = node.dataset.nodeId;
+        const additiveSelection = event.shiftKey || event.metaKey || event.ctrlKey;
+        const currentSelection = store.getState().selection.nodeIds || [];
+
+        if (additiveSelection) {
+          store.actions.toggleNodeSelection(nodeId);
+          return;
+        }
+
+        if (!currentSelection.includes(nodeId) || currentSelection.length === 1) {
+          store.actions.selectNode(nodeId);
+        }
+
         beginMove(event, node.dataset.nodeId);
         return;
       }
 
-      store.actions.clearSelection();
+      beginMarquee(event);
+    };
+
+    const handleDoubleClick = (event) => {
+      const edgeLabel = event.target.closest('[data-edge-label-id]');
+      if (!edgeLabel) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      openEdgeEditor(edgeLabel.dataset.edgeLabelId);
     };
 
     const handleWheel = (event) => {
@@ -849,12 +1137,54 @@
       scheduleRender('preview');
     };
 
+    const handleOverlayInput = (event) => {
+      const input = event.target.closest('[data-edge-editor-input="true"]');
+      if (!input || !edgeEditor) {
+        return;
+      }
+
+      edgeEditor.value = input.value;
+    };
+
+    const handleOverlayKeyDown = (event) => {
+      const input = event.target.closest('[data-edge-editor-input="true"]');
+      if (!input || !edgeEditor) {
+        return;
+      }
+
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        closeEdgeEditor({ save: true });
+      }
+
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeEdgeEditor({ save: false });
+      }
+    };
+
+    const handleOverlayFocusOut = (event) => {
+      if (!edgeEditor) {
+        return;
+      }
+
+      if (overlayLayer.contains(event.relatedTarget)) {
+        return;
+      }
+
+      closeEdgeEditor({ save: true });
+    };
+
     shell.addEventListener('mousedown', handleMouseDown);
+    shell.addEventListener('dblclick', handleDoubleClick);
     shell.addEventListener('wheel', handleWheel, { passive: false });
     shell.addEventListener('dragenter', handleDragEnter);
     shell.addEventListener('dragover', handleDragOver);
     shell.addEventListener('dragleave', handleDragLeave);
     shell.addEventListener('drop', handleDrop);
+    overlayLayer.addEventListener('input', handleOverlayInput);
+    overlayLayer.addEventListener('keydown', handleOverlayKeyDown);
+    overlayLayer.addEventListener('focusout', handleOverlayFocusOut);
     minimapSvg.addEventListener('mousedown', handleMinimapPointerDown);
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
@@ -863,11 +1193,15 @@
     window.addEventListener('blur', handleWindowBlur);
 
     cleanup.push(() => shell.removeEventListener('mousedown', handleMouseDown));
+    cleanup.push(() => shell.removeEventListener('dblclick', handleDoubleClick));
     cleanup.push(() => shell.removeEventListener('wheel', handleWheel));
     cleanup.push(() => shell.removeEventListener('dragenter', handleDragEnter));
     cleanup.push(() => shell.removeEventListener('dragover', handleDragOver));
     cleanup.push(() => shell.removeEventListener('dragleave', handleDragLeave));
     cleanup.push(() => shell.removeEventListener('drop', handleDrop));
+    cleanup.push(() => overlayLayer.removeEventListener('input', handleOverlayInput));
+    cleanup.push(() => overlayLayer.removeEventListener('keydown', handleOverlayKeyDown));
+    cleanup.push(() => overlayLayer.removeEventListener('focusout', handleOverlayFocusOut));
     cleanup.push(() => minimapSvg.removeEventListener('mousedown', handleMinimapPointerDown));
     cleanup.push(() => window.removeEventListener('mousemove', handleMouseMove));
     cleanup.push(() => window.removeEventListener('mouseup', handleMouseUp));

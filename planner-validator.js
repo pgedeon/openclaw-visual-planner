@@ -15,7 +15,7 @@
     info: 2,
   };
 
-  const makeIssue = ({ severity = 'warning', code, message, entityType, entityId, hint = '' }) => ({
+  const makeIssue = ({ severity = 'warning', code, message, entityType, entityId, hint = '', fieldKey = '' }) => ({
     id: Planner.createPlannerId('issue'),
     severity,
     code,
@@ -23,6 +23,7 @@
     entityType,
     entityId,
     hint,
+    fieldKey,
   });
 
   const detectCycles = (nodes, edges) => {
@@ -134,6 +135,7 @@
           entityType: 'node',
           entityId: node.id,
           hint: 'Add a short descriptive title in the inspector.',
+          fieldKey: 'title',
         }));
       }
 
@@ -149,9 +151,34 @@
             entityType: 'node',
             entityId: node.id,
             hint: `Fill in ${field.label.toLowerCase()} to make this node executable.`,
+            fieldKey: field.key,
           }));
         }
       });
+
+      if (node.type === 'task' && node.data?.startDate && node.data?.dueDate && String(node.data.dueDate) < String(node.data.startDate)) {
+        issues.push(makeIssue({
+          severity: 'warning',
+          code: 'task-date-order',
+          message: 'Task due date lands before the start date.',
+          entityType: 'node',
+          entityId: node.id,
+          hint: 'Adjust the task schedule so the due date is on or after the start date.',
+          fieldKey: 'dueDate',
+        }));
+      }
+
+      if (node.type === 'workflow-step' && Number(node.data?.timeoutMinutes || 0) < 1) {
+        issues.push(makeIssue({
+          severity: 'error',
+          code: 'invalid-timeout',
+          message: 'Workflow steps must have a timeout of at least 1 minute.',
+          entityType: 'node',
+          entityId: node.id,
+          hint: 'Increase the timeout so the step has time to run.',
+          fieldKey: 'timeoutMinutes',
+        }));
+      }
 
       const incidentEdges = edges.filter((edge) => edge.sourceNodeId === node.id || edge.targetNodeId === node.id);
       if (!incidentEdges.length) {
@@ -249,6 +276,7 @@
           entityType: 'edge',
           entityId: edge.id,
           hint: 'Change the edge type or reconnect using matching ports.',
+          fieldKey: 'type',
         }));
       }
     });

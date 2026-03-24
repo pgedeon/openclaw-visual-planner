@@ -19,6 +19,9 @@
       const zoom = Math.round((state.viewport.zoom || 1) * 100);
       const canUndo = typeof store.canUndo === 'function' ? store.canUndo() : false;
       const canRedo = typeof store.canRedo === 'function' ? store.canRedo() : false;
+      const selectionCount = state.selection.nodeIds.length;
+      const canArrange = selectionCount >= 2;
+      const canDistribute = selectionCount >= 3;
       const savedLabel = state.meta.lastSavedAt
         ? `Saved ${new Date(state.meta.lastSavedAt).toLocaleTimeString()}`
         : 'Not saved yet';
@@ -28,7 +31,7 @@
           <div class="planner-toolbar__logo">OC</div>
           <div>
             <div class="planner-toolbar__title">OpenClaw Visual Planner</div>
-            <div class="planner-toolbar__subtitle">Standalone Phase 1 canvas aligned with WebOS native-view patterns</div>
+            <div class="planner-toolbar__subtitle">Standalone workflow canvas with graph editing, validation, and runtime overlays</div>
           </div>
         </div>
         <div class="planner-toolbar__controls">
@@ -49,7 +52,15 @@
           <div class="planner-toolbar__group">
             <button class="planner-button planner-button--primary" type="button" data-action="validate">Validate</button>
             <button class="planner-button" type="button" data-action="fit">Fit View</button>
+            <button class="planner-button" type="button" data-action="tidy">Tidy Graph</button>
             <button class="planner-button" type="button" data-action="new">Blank</button>
+          </div>
+
+          <div class="planner-toolbar__group">
+            <button class="planner-button" type="button" data-action="align-left"${canArrange ? '' : ' disabled'}>Align Left</button>
+            <button class="planner-button" type="button" data-action="align-top"${canArrange ? '' : ' disabled'}>Align Top</button>
+            <button class="planner-button" type="button" data-action="distribute-x"${canDistribute ? '' : ' disabled'}>Distribute X</button>
+            <button class="planner-button" type="button" data-action="distribute-y"${canDistribute ? '' : ' disabled'}>Distribute Y</button>
           </div>
 
           <div class="planner-toolbar__group">
@@ -68,6 +79,7 @@
             <button class="planner-button" type="button" data-action="load">Load</button>
             <button class="planner-button" type="button" data-action="export">Export</button>
             <button class="planner-button" type="button" data-action="import">Import</button>
+            <button class="planner-button" type="button" data-action="shortcuts">Shortcuts</button>
             <input type="file" accept="application/json,.json" hidden data-import-input="true" />
           </div>
         </div>
@@ -75,6 +87,7 @@
           <span class="planner-chip ${issues.length ? 'is-warning' : 'is-success'}">${issues.length} issue${issues.length === 1 ? '' : 's'}</span>
           <span class="planner-chip">${state.document.graph.nodes.length} nodes</span>
           <span class="planner-chip">${state.document.graph.edges.length} edges</span>
+          ${selectionCount ? `<span class="planner-chip is-info">${selectionCount} selected</span>` : ''}
           <span class="planner-chip">${zoom}% zoom</span>
           <span class="planner-chip ${state.meta.dirty ? 'is-warning' : ''}">${state.meta.dirty ? 'Unsaved changes' : savedLabel}</span>
           ${meta.reason ? `<span class="planner-chip">${Planner.escapeHtml(meta.reason)}</span>` : ''}
@@ -95,7 +108,12 @@
       const action = actionButton.dataset.action;
       if (action === 'validate') actions.validate?.();
       if (action === 'fit') actions.fitToGraph?.();
+      if (action === 'tidy') actions.tidyGraph?.();
       if (action === 'new') actions.newBlank?.();
+      if (action === 'align-left') actions.alignSelection?.('left');
+      if (action === 'align-top') actions.alignSelection?.('top');
+      if (action === 'distribute-x') actions.distributeSelection?.('horizontal');
+      if (action === 'distribute-y') actions.distributeSelection?.('vertical');
       if (action === 'toggle-grid') actions.togglePreference?.('showGrid');
       if (action === 'toggle-snap') actions.togglePreference?.('snapToGrid');
       if (action === 'toggle-minimap') actions.togglePreference?.('showMinimap');
@@ -104,6 +122,7 @@
       if (action === 'save') actions.saveLocal?.();
       if (action === 'load') actions.loadLocal?.();
       if (action === 'export') actions.exportJson?.();
+      if (action === 'shortcuts') actions.openShortcuts?.();
       if (action === 'import') {
         mountNode.querySelector('[data-import-input]')?.click();
       }

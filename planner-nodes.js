@@ -40,6 +40,27 @@
     },
   ];
 
+  const appearanceInspectorFields = [
+    {
+      key: 'visualColor',
+      label: 'Accent Color',
+      type: 'color',
+      value: '',
+    },
+    {
+      key: 'visualStyle',
+      label: 'Style Preset',
+      type: 'select',
+      value: 'default',
+      options: [
+        { value: 'default', label: 'Default' },
+        { value: 'muted', label: 'Muted' },
+        { value: 'emphasis', label: 'Emphasis' },
+        { value: 'contrast', label: 'High Contrast' },
+      ],
+    },
+  ];
+
   const nodeTypes = [
     {
       type: 'note',
@@ -355,7 +376,7 @@
   const buildDefaultData = (nodeType) => {
     const defaults = {};
 
-    commonInspectorFields.concat(nodeType.fields || []).forEach((field) => {
+    commonInspectorFields.concat(appearanceInspectorFields, nodeType.fields || []).forEach((field) => {
       if (field.key === 'title') {
         defaults.title = nodeType.label;
         return;
@@ -439,6 +460,7 @@
   };
 
   Planner.PLANNER_COMMON_NODE_FIELDS = commonInspectorFields;
+  Planner.PLANNER_NODE_APPEARANCE_FIELDS = appearanceInspectorFields;
   Planner.PLANNER_NODE_TYPES = nodeTypes;
   Planner.getPlannerNodeType = getNodeType;
   Planner.getPlannerNodePorts = getNodePorts;
