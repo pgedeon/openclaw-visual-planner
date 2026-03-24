@@ -894,6 +894,14 @@ svg text {
   gap: 8px;
 }
 
+.planner-runtime__summary,
+.planner-simulation__summary {
+  padding: 12px 14px;
+  border-radius: 18px;
+  border: 1px solid var(--planner-border);
+  background: rgba(255, 255, 255, 0.03);
+}
+
 .planner-runtime__legend-item {
   display: inline-flex;
   align-items: center;
@@ -940,6 +948,23 @@ svg text {
 
 .planner-runtime__select {
   width: 100%;
+}
+
+.planner-simulation {
+  display: grid;
+  gap: 14px;
+}
+
+.planner-simulation__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.planner-simulation__section {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
 }
 
 /* --------------------------------------------

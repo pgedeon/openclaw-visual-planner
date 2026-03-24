@@ -491,6 +491,45 @@
       return loadLocalDraft();
     };
 
+    const ensureServerPlanId = async ({ silent = false } = {}) => {
+      if (!apiClient) {
+        if (!silent) {
+          notify('Server-backed workflow features require the local planner server.', 'warning');
+        }
+        return '';
+      }
+
+      const backendAvailable = await apiClient.probeBackend({ force: true });
+      if (!backendAvailable) {
+        syncBackendState({
+          availability: 'offline',
+          preferredStorage: 'local',
+          lastError: 'The planner server is unavailable.',
+        });
+        if (!silent) {
+          notify('Start the planner server to export workflows or run simulations.', 'warning');
+        }
+        return '';
+      }
+
+      const state = store.getState();
+      if (state.document.metadata.serverPlanId && !state.meta.dirty) {
+        return state.document.metadata.serverPlanId;
+      }
+
+      const plan = await saveToServer({ silent: true });
+      return plan?.id || '';
+    };
+
+    const downloadJsonPayload = (payload, filename) => {
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    };
+
     const maybeConfirmReplace = (label = 'replace the current graph') => {
       const state = store.getState();
       const hasContent = state.document.graph.nodes.length > 0 || state.document.graph.edges.length > 0;
@@ -576,6 +615,45 @@
       },
       validate() {
         runValidation({ openTray: true, silent: false });
+      },
+      async simulate() {
+        const planId = await ensureServerPlanId();
+        if (!planId) {
+          return;
+        }
+
+        try {
+          const payload = await apiClient.simulatePlan(planId);
+          store.actions.setSimulationReport(payload?.simulation || payload?.report || payload);
+          syncBackendState({
+            availability: 'online',
+            preferredStorage: 'server',
+            lastError: '',
+          });
+          notify('Generated a simulation report.', 'success');
+        } catch (error) {
+          notify(error.message || 'Simulation failed.', 'error');
+        }
+      },
+      async exportWorkflow() {
+        const planId = await ensureServerPlanId();
+        if (!planId) {
+          return;
+        }
+
+        try {
+          const payload = await apiClient.exportWorkflow(planId);
+          const workflow = payload?.workflow || payload;
+          downloadJsonPayload(workflow, `${Planner.slugify(store.getState().document.metadata.title || 'workflow')}.workflow.json`);
+          syncBackendState({
+            availability: 'online',
+            preferredStorage: 'server',
+            lastError: '',
+          });
+          notify('Exported workflow JSON.', 'success');
+        } catch (error) {
+          notify(error.message || 'Workflow export failed.', 'error');
+        }
       },
       fitToGraph() {
         canvas.fitToGraph();
@@ -821,7 +899,7 @@
 
     store.subscribe((state, meta) => {
       const reason = meta.reason || '';
-      if (/^(selection:|viewport|history:|meta:|validation:|subscribe$|clipboard:|backend:)/.test(reason)) {
+      if (/^(selection:|viewport|history:|meta:|validation:|simulation:|subscribe$|clipboard:|backend:|runtime:sync)/.test(reason)) {
         return;
       }
 
@@ -907,6 +985,9 @@
       store,
       services,
       ready: bootstrapPromise,
+      applyWorkflowRunStatus(payload) {
+        return Planner.applyPlannerWorkflowRunStatus?.(store, payload);
+      },
       copySelection,
       pasteSelection,
       duplicateSelection,

@@ -65,6 +65,8 @@
 
           <div class="planner-toolbar__group">
             <button class="planner-button planner-button--primary" type="button" data-action="validate">Validate</button>
+            <button class="planner-button" type="button" data-action="simulate">Simulate</button>
+            <button class="planner-button" type="button" data-action="export-workflow">Export Workflow</button>
             <button class="planner-button" type="button" data-action="fit">Fit View</button>
             <button class="planner-button" type="button" data-action="tidy">Tidy Graph</button>
             <button class="planner-button" type="button" data-action="new">Blank</button>
@@ -125,6 +127,8 @@
 
       const action = actionButton.dataset.action;
       if (action === 'validate') actions.validate?.();
+      if (action === 'simulate') actions.simulate?.();
+      if (action === 'export-workflow') actions.exportWorkflow?.();
       if (action === 'fit') actions.fitToGraph?.();
       if (action === 'tidy') actions.tidyGraph?.();
       if (action === 'new') actions.newBlank?.();

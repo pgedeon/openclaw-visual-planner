@@ -382,7 +382,9 @@
       const isPrimarySelection = isSelected && state.selection.nodeIds.length === 1;
       const summary = Planner.getPlannerNodeSummary(node);
       const summaryLines = splitSummaryLines(summary);
-      const runtimeStatusId = state.runtime.enabled ? (state.runtime.statuses[node.id] || 'queued') : 'idle';
+      const runtimeStatusId = state.runtime.enabled
+        ? (state.runtime.statuses[node.id] || (state.runtime.runStatus ? 'idle' : 'queued'))
+        : 'idle';
       const runtimeStatus = Planner.getPlannerRuntimeStatus(runtimeStatusId);
       const appearance = resolveNodeAppearance(node, definition);
 

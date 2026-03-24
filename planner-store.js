@@ -12,7 +12,7 @@
   const HISTORY_LIMIT = 100;
   const DEFAULT_GRID_SIZE = 24;
   const HISTORY_KEYS = ['document', 'viewport', 'preferences', 'runtime', 'ui'];
-  const STATE_COMPARE_KEYS = ['selection', 'clipboard', 'validation', 'meta', 'backend'];
+  const STATE_COMPARE_KEYS = ['selection', 'clipboard', 'validation', 'meta', 'backend', 'simulation'];
 
   const isObject = (value) => value && typeof value === 'object' && !Array.isArray(value);
 
@@ -137,6 +137,11 @@
         enabled: false,
         scenario: 'idle',
         statuses: {},
+        runStatus: null,
+      },
+      simulation: {
+        report: null,
+        lastRunAt: null,
       },
       backend: {
         availability: 'unknown',
@@ -579,6 +584,22 @@
             }
           }, { reason: options.reason || 'validation:update' });
         },
+        setSimulationReport(report, options = {}) {
+          return mutate((draft) => {
+            draft.simulation.report = clone(report || null);
+            draft.simulation.lastRunAt = new Date().toISOString();
+            draft.ui.trayTab = 'simulation';
+          }, { reason: options.reason || 'simulation:update' });
+        },
+        clearSimulationReport() {
+          return mutate((draft) => {
+            draft.simulation.report = null;
+            draft.simulation.lastRunAt = null;
+            if (draft.ui.trayTab === 'simulation') {
+              draft.ui.trayTab = 'validation';
+            }
+          }, { reason: 'simulation:clear' });
+        },
         setBackendState(patch = {}) {
           return mutate((draft) => {
             merge(draft.backend, patch || {});
@@ -595,6 +616,7 @@
             draft.runtime.enabled = true;
             draft.runtime.scenario = scenario || 'custom';
             draft.runtime.statuses = clone(statuses || {});
+            draft.runtime.runStatus = null;
             draft.ui.mode = 'runtime';
             draft.ui.trayTab = 'runtime';
             draft.meta.dirty = true;
@@ -604,6 +626,7 @@
           return mutate((draft) => {
             draft.runtime.enabled = true;
             draft.runtime.scenario = 'custom';
+            draft.runtime.runStatus = null;
             if (!status || status === 'idle') {
               delete draft.runtime.statuses[nodeId];
             } else {
@@ -613,11 +636,22 @@
             draft.meta.dirty = true;
           }, { history: true, reason: 'runtime:node-status' });
         },
+        setWorkflowRunStatus(runStatus, statuses = {}) {
+          return mutate((draft) => {
+            draft.runtime.enabled = true;
+            draft.runtime.scenario = 'workflow-run';
+            draft.runtime.runStatus = clone(runStatus || null);
+            draft.runtime.statuses = clone(statuses || {});
+            draft.ui.mode = 'runtime';
+            draft.ui.trayTab = 'runtime';
+          }, { reason: 'runtime:sync' });
+        },
         clearRuntime() {
           return mutate((draft) => {
             draft.runtime.enabled = false;
             draft.runtime.scenario = 'idle';
             draft.runtime.statuses = {};
+            draft.runtime.runStatus = null;
             if (draft.ui.mode === 'runtime') {
               draft.ui.mode = 'workflow';
             }

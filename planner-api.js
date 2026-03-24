@@ -113,6 +113,20 @@
         }));
         return payload;
       },
+      async exportWorkflow(planId) {
+        const payload = await withAvailability(() => requestJson(`/api/plans/${encodeURIComponent(planId)}/export-workflow`, {
+          method: 'POST',
+          body: JSON.stringify({}),
+        }));
+        return payload;
+      },
+      async simulatePlan(planId) {
+        const payload = await withAvailability(() => requestJson(`/api/plans/${encodeURIComponent(planId)}/simulate`, {
+          method: 'POST',
+          body: JSON.stringify({}),
+        }));
+        return payload;
+      },
       async listTemplates() {
         const payload = await withAvailability(() => requestJson('/api/templates'));
         return payload?.templates || [];

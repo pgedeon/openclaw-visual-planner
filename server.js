@@ -14,6 +14,10 @@ const cors = require('cors');
 const {
   createPlannerDatabase,
 } = require('./server/planner-db');
+const {
+  convertPlannerGraphToWorkflowTemplate,
+  simulatePlannerGraph,
+} = require('./server/graph-to-workflow');
 
 const ROOT_DIR = __dirname;
 const PORT = Number(process.env.PORT || 3000);
@@ -100,6 +104,32 @@ function createApp(options = {}) {
     }
 
     response.status(201).json(payload);
+  });
+
+  app.post('/api/plans/:id/export-workflow', (request, response) => {
+    const plan = database.getPlan(String(request.params.id || '').trim());
+    if (!plan) {
+      response.status(404).json({ error: 'Plan not found.' });
+      return;
+    }
+
+    const workflow = convertPlannerGraphToWorkflowTemplate(plan.document, {
+      planId: plan.id,
+    });
+    response.json({ workflow });
+  });
+
+  app.post('/api/plans/:id/simulate', (request, response) => {
+    const plan = database.getPlan(String(request.params.id || '').trim());
+    if (!plan) {
+      response.status(404).json({ error: 'Plan not found.' });
+      return;
+    }
+
+    const simulation = simulatePlannerGraph(plan.document, {
+      planId: plan.id,
+    });
+    response.json({ simulation });
   });
 
   app.get('/api/templates', (_request, response) => {
