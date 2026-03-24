@@ -32,7 +32,7 @@
     {
       title: 'Workflow',
       items: [
-        { keys: 'Ctrl/Cmd + S', description: 'Save a local planner draft' },
+        { keys: 'Ctrl/Cmd + S', description: 'Save using the preferred storage backend' },
         { keys: 'Ctrl/Cmd + Z', description: 'Undo the last structural change' },
         { keys: 'Ctrl/Cmd + Shift + Z', description: 'Redo after an undo' },
         { keys: '?', description: 'Open this keyboard shortcut sheet' },
@@ -96,6 +96,55 @@
       </div>
     </div>
   `;
+
+  const renderServerPlansModal = (modalState = {}) => {
+    const plans = modalState.plans || [];
+
+    return `
+      <div class="planner-modal__dialog planner-modal__dialog--wide" role="dialog" aria-modal="true" aria-labelledby="planner-server-title">
+        <div class="planner-modal__header">
+          <div>
+            <div class="planner-panel__eyebrow">Server Storage</div>
+            <h2 id="planner-server-title" class="planner-panel__title">Open from Server</h2>
+          </div>
+          <button type="button" class="planner-button planner-button--ghost" data-modal-close="true">Close</button>
+        </div>
+        ${modalState.loading ? `
+          <div class="planner-tray__empty">
+            <div class="planner-tray__empty-title">Loading plans…</div>
+            <div class="planner-tray__empty-copy">Fetching the latest plans from the local planner server.</div>
+          </div>
+        ` : modalState.error ? `
+          <div class="planner-tray__empty">
+            <div class="planner-tray__empty-title">Unable to reach the server</div>
+            <div class="planner-tray__empty-copy">${Planner.escapeHtml(modalState.error)}</div>
+          </div>
+        ` : plans.length ? `
+          <div class="planner-server-list">
+            ${plans.map((plan) => `
+              <button type="button" class="planner-server-card" data-open-server-plan="${Planner.escapeHtml(plan.id)}">
+                <span class="planner-server-card__title">${Planner.escapeHtml(plan.title || 'Untitled Visual Plan')}</span>
+                <span class="planner-server-card__meta">
+                  ${Planner.escapeHtml(plan.description || 'No description yet.')}
+                </span>
+                <span class="planner-server-card__chips">
+                  <span class="planner-chip">${plan.nodeCount} nodes</span>
+                  <span class="planner-chip">${plan.edgeCount} edges</span>
+                  <span class="planner-chip ${plan.validation?.issueCount ? 'is-warning' : 'is-success'}">${plan.validation?.issueCount || 0} issue${(plan.validation?.issueCount || 0) === 1 ? '' : 's'}</span>
+                  <span class="planner-chip">Updated ${Planner.escapeHtml(new Date(plan.updatedAt).toLocaleString())}</span>
+                </span>
+              </button>
+            `).join('')}
+          </div>
+        ` : `
+          <div class="planner-tray__empty">
+            <div class="planner-tray__empty-title">No server plans yet</div>
+            <div class="planner-tray__empty-copy">Use “Save to Server” to create your first persisted plan.</div>
+          </div>
+        `}
+      </div>
+    `;
+  };
 
   const buildSelectionFragment = (store) => {
     const state = store.getState();
@@ -169,8 +218,10 @@
 
     const notify = createNotifier(toastHost);
     const store = providedStore || Planner.createPlannerStore();
+    const apiClient = services.apiClient || Planner.createPlannerApiClient?.({ baseUrl: services.apiBaseUrl || '' }) || null;
     let autosaveTimer = 0;
     let validationTimer = 0;
+    let bootstrapPromise = Promise.resolve();
     let modalState = null;
     let clipboardFragment = store.getState().clipboard.fragment || null;
     let pasteCount = 0;
@@ -192,7 +243,11 @@
       modalHost.hidden = false;
       modalHost.innerHTML = `
         <div class="planner-modal" data-modal-backdrop="true">
-          ${modalState.type === 'shortcuts' ? renderShortcutsModal() : ''}
+          ${modalState.type === 'shortcuts'
+            ? renderShortcutsModal()
+            : modalState.type === 'server-browser'
+              ? renderServerPlansModal(modalState)
+              : ''}
         </div>
       `;
     };
@@ -219,6 +274,221 @@
       if (!silent) {
         notify('Saved local planner draft.', 'success');
       }
+    };
+
+    const syncBackendState = (patch = {}) => {
+      store.actions.setBackendState({
+        lastCheckedAt: new Date().toISOString(),
+        ...patch,
+      });
+    };
+
+    const loadLocalDraft = ({ silent = false } = {}) => {
+      const saved = Planner.loadPlannerFromLocalStorage(Planner.PLANNER_LOCAL_STORAGE_KEY);
+      if (!saved) {
+        if (!silent) {
+          notify('No local draft found yet.', 'warning');
+        }
+        return false;
+      }
+
+      if (!maybeConfirmReplace('replace the current graph with the saved local draft')) {
+        return false;
+      }
+
+      store.actions.replaceFromPartial(saved, { history: true, reason: 'document:load' });
+      store.actions.markSaved();
+      runValidation({ openTray: false, silent: true });
+      if (!silent) {
+        notify('Loaded local planner draft.', 'success');
+      }
+      return true;
+    };
+
+    const buildServerLoadedState = (plan) => {
+      const nextState = Planner.deserializePlannerDocument(plan.document || {});
+      nextState.validation.issues = plan.validation?.issues || [];
+      nextState.validation.lastRunAt = plan.validation?.validatedAt || null;
+      nextState.backend = {
+        availability: 'online',
+        preferredStorage: 'server',
+        lastCheckedAt: new Date().toISOString(),
+        lastError: '',
+      };
+      nextState.meta.lastSavedAt = plan.updatedAt || new Date().toISOString();
+      nextState.meta.dirty = false;
+      return nextState;
+    };
+
+    const openServerPlanById = async (planId, options = {}) => {
+      if (!apiClient || !planId) {
+        return false;
+      }
+
+      try {
+        const payload = await apiClient.getPlan(planId);
+        const plan = payload?.plan || payload;
+        const nextState = buildServerLoadedState(plan);
+        store.actions.replaceFromPartial(nextState, {
+          history: options.history !== false,
+          reason: options.reason || 'document:load-server',
+          dirty: false,
+        });
+        if (nextState.document.graph.nodes.length) {
+          window.setTimeout(() => canvas.fitToGraph(), 16);
+        }
+        Planner.setPlannerLastServerPlanId?.(plan.id);
+        syncBackendState({
+          availability: 'online',
+          preferredStorage: 'server',
+          lastError: '',
+        });
+        if (!options.silent) {
+          notify(`Loaded “${plan.title || 'Untitled Visual Plan'}” from server.`, 'success');
+        }
+        return true;
+      } catch (error) {
+        syncBackendState({
+          availability: 'offline',
+          preferredStorage: 'local',
+          lastError: error.message || 'Unable to load the server plan.',
+        });
+        if (!options.silent) {
+          notify(error.message || 'Unable to load the server plan.', 'error');
+        }
+        return false;
+      }
+    };
+
+    const openServerBrowser = async () => {
+      if (!apiClient) {
+        notify('Server storage is not available in this context.', 'warning');
+        return false;
+      }
+
+      setModal({ type: 'server-browser', loading: true, plans: [] });
+
+      try {
+        const plans = await apiClient.listPlans();
+        syncBackendState({
+          availability: 'online',
+          preferredStorage: 'server',
+          lastError: '',
+        });
+        setModal({ type: 'server-browser', loading: false, plans });
+        return true;
+      } catch (error) {
+        syncBackendState({
+          availability: 'offline',
+          preferredStorage: 'local',
+          lastError: error.message || 'Unable to load the server plan list.',
+        });
+        setModal({ type: 'server-browser', loading: false, plans: [], error: error.message || 'Unable to reach the planner server.' });
+        return false;
+      }
+    };
+
+    const saveToServer = async ({ silent = false } = {}) => {
+      if (!apiClient) {
+        saveLocal({ silent });
+        return null;
+      }
+
+      const backendAvailable = await apiClient.probeBackend({ force: true });
+      if (!backendAvailable) {
+        syncBackendState({
+          availability: 'offline',
+          preferredStorage: 'local',
+          lastError: 'The planner server is unavailable.',
+        });
+        saveLocal({ silent: true });
+        if (!silent) {
+          notify('Planner server is unavailable. Saved locally instead.', 'warning');
+        }
+        return null;
+      }
+
+      try {
+        const state = store.getState();
+        const existingPlanId = state.document.metadata.serverPlanId;
+        const payload = {
+          title: state.document.metadata.title,
+          description: state.document.metadata.description,
+          templateId: state.document.metadata.templateId,
+          document: Planner.buildPlannerDocumentPayload(state),
+        };
+
+        const response = existingPlanId
+          ? await apiClient.updatePlan(existingPlanId, payload)
+          : await apiClient.createPlan(payload);
+
+        const plan = response?.plan || response;
+        const nextState = store.snapshot();
+        nextState.document.metadata.serverPlanId = plan.id;
+        nextState.document.metadata.serverVersionId = plan.latestVersionId || plan.document?.metadata?.serverVersionId || null;
+        nextState.document.metadata.updatedAt = plan.updatedAt || nextState.document.metadata.updatedAt;
+        nextState.validation.issues = plan.validation?.issues || [];
+        nextState.validation.lastRunAt = plan.validation?.validatedAt || new Date().toISOString();
+        nextState.backend = {
+          availability: 'online',
+          preferredStorage: 'server',
+          lastCheckedAt: new Date().toISOString(),
+          lastError: '',
+        };
+        nextState.meta.lastSavedAt = plan.updatedAt || new Date().toISOString();
+        nextState.meta.dirty = false;
+        store.actions.replaceFromPartial(nextState, { history: false, reason: 'server:save', dirty: false });
+        Planner.setPlannerLastServerPlanId?.(plan.id);
+
+        if (!silent) {
+          notify(existingPlanId ? 'Saved planner to server.' : 'Created planner on server.', 'success');
+        }
+
+        return plan;
+      } catch (error) {
+        syncBackendState({
+          availability: 'offline',
+          preferredStorage: 'local',
+          lastError: error.message || 'Server save failed.',
+        });
+        saveLocal({ silent: true });
+        if (!silent) {
+          notify(`${error.message || 'Server save failed.'} Saved locally instead.`, 'warning');
+        }
+        return null;
+      }
+    };
+
+    const savePreferredDocument = async () => {
+      if (apiClient && await apiClient.probeBackend({ force: true })) {
+        return saveToServer();
+      }
+
+      syncBackendState({
+        availability: 'offline',
+        preferredStorage: 'local',
+        lastError: 'The planner server is unavailable.',
+      });
+      saveLocal();
+      return null;
+    };
+
+    const openPreferredDocument = async () => {
+      if (apiClient && await apiClient.probeBackend({ force: true })) {
+        syncBackendState({
+          availability: 'online',
+          preferredStorage: 'server',
+          lastError: '',
+        });
+        return openServerBrowser();
+      }
+
+      syncBackendState({
+        availability: 'offline',
+        preferredStorage: 'local',
+        lastError: 'The planner server is unavailable.',
+      });
+      return loadLocalDraft();
     };
 
     const maybeConfirmReplace = (label = 'replace the current graph') => {
@@ -370,22 +640,31 @@
       togglePreference(key) {
         store.actions.togglePreference(key);
       },
+      async saveDocument() {
+        await savePreferredDocument();
+      },
+      async openDocument() {
+        await openPreferredDocument();
+      },
+      async saveServer() {
+        await saveToServer();
+      },
+      async openServer(planId) {
+        if (planId) {
+          if (!maybeConfirmReplace('replace the current graph with a server plan')) {
+            return;
+          }
+          await openServerPlanById(planId);
+          return;
+        }
+
+        await openServerBrowser();
+      },
       saveLocal() {
         saveLocal();
       },
       loadLocal() {
-        const saved = Planner.loadPlannerFromLocalStorage(Planner.PLANNER_LOCAL_STORAGE_KEY);
-        if (!saved) {
-          notify('No local draft found yet.', 'warning');
-          return;
-        }
-        if (!maybeConfirmReplace('replace the current graph with the saved local draft')) {
-          return;
-        }
-        store.actions.replaceFromPartial(saved, { history: true, reason: 'document:load' });
-        store.actions.markSaved();
-        runValidation({ openTray: false, silent: true });
-        notify('Loaded local planner draft.', 'success');
+        loadLocalDraft();
       },
       exportJson() {
         Planner.downloadPlannerJson(store.getState());
@@ -473,7 +752,7 @@
 
       if (modifier && event.key.toLowerCase() === 's') {
         event.preventDefault();
-        actions.saveLocal();
+        actions.saveDocument();
         return;
       }
 
@@ -519,9 +798,16 @@
     };
 
     const handleModalClick = (event) => {
+      const planButton = event.target.closest('[data-open-server-plan]');
       const closeButton = event.target.closest('[data-modal-close="true"]');
       const backdrop = event.target.closest('[data-modal-backdrop="true"]');
       const insideDialog = event.target.closest('.planner-modal__dialog');
+
+      if (planButton) {
+        setModal(null);
+        actions.openServer(planButton.dataset.openServerPlan);
+        return;
+      }
 
       if (closeButton) {
         setModal(null);
@@ -535,7 +821,7 @@
 
     store.subscribe((state, meta) => {
       const reason = meta.reason || '';
-      if (/^(selection:|viewport|history:|meta:|validation:|subscribe$|clipboard:)/.test(reason)) {
+      if (/^(selection:|viewport|history:|meta:|validation:|subscribe$|clipboard:|backend:)/.test(reason)) {
         return;
       }
 
@@ -543,17 +829,57 @@
       scheduleValidation();
     });
 
-    const savedDraft = Planner.loadPlannerFromLocalStorage(Planner.PLANNER_LOCAL_STORAGE_KEY);
-    if (savedDraft) {
-      store.actions.replaceFromPartial(savedDraft, { history: false, reason: 'bootstrap:load' });
-      store.actions.markSaved();
-      notify('Loaded last local draft.', 'info');
-      if (savedDraft.document.graph.nodes.length) {
-        window.setTimeout(() => canvas.fitToGraph(), 24);
-      }
-    }
+    const hydrateInitialDocument = async () => {
+      const savedDraft = Planner.loadPlannerFromLocalStorage(Planner.PLANNER_LOCAL_STORAGE_KEY);
 
-    runValidation({ openTray: false, silent: true });
+      if (apiClient) {
+        const backendAvailable = await apiClient.probeBackend({ force: true });
+        syncBackendState({
+          availability: backendAvailable ? 'online' : 'offline',
+          preferredStorage: backendAvailable ? 'server' : 'local',
+          lastError: backendAvailable ? '' : 'The planner server is unavailable.',
+        });
+
+        if (backendAvailable) {
+          const lastServerPlanId = Planner.getPlannerLastServerPlanId?.();
+          if (lastServerPlanId) {
+            const loaded = await openServerPlanById(lastServerPlanId, {
+              history: false,
+              reason: 'bootstrap:server',
+              silent: true,
+            });
+            if (loaded) {
+              notify('Loaded last server plan.', 'info');
+              if (store.getState().document.graph.nodes.length) {
+                window.setTimeout(() => canvas.fitToGraph(), 24);
+              }
+              return;
+            }
+
+            Planner.clearPlannerLastServerPlanId?.();
+          }
+        }
+      } else {
+        syncBackendState({
+          availability: 'offline',
+          preferredStorage: 'local',
+          lastError: 'Server storage is not available in this context.',
+        });
+      }
+
+      if (savedDraft) {
+        store.actions.replaceFromPartial(savedDraft, { history: false, reason: 'bootstrap:load' });
+        store.actions.markSaved();
+        notify('Loaded last local draft.', 'info');
+        if (savedDraft.document.graph.nodes.length) {
+          window.setTimeout(() => canvas.fitToGraph(), 24);
+        }
+      }
+
+      runValidation({ openTray: false, silent: true });
+    };
+
+    bootstrapPromise = hydrateInitialDocument();
 
     window.addEventListener('keydown', handleGlobalKeyDown);
     modalHost?.addEventListener('click', handleModalClick);
@@ -580,6 +906,7 @@
     return {
       store,
       services,
+      ready: bootstrapPromise,
       copySelection,
       pasteSelection,
       duplicateSelection,
@@ -590,6 +917,10 @@
   Planner.mountPlannerApp = mountPlannerApp;
 
   document.addEventListener('DOMContentLoaded', () => {
+    if (document.body?.dataset.plannerStandalone !== 'true') {
+      return;
+    }
+
     const app = mountPlannerApp({ rootNode: document });
 
     window.addEventListener('beforeunload', () => {

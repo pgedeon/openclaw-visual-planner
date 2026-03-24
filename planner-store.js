@@ -12,6 +12,7 @@
   const HISTORY_LIMIT = 100;
   const DEFAULT_GRID_SIZE = 24;
   const HISTORY_KEYS = ['document', 'viewport', 'preferences', 'runtime', 'ui'];
+  const STATE_COMPARE_KEYS = ['selection', 'clipboard', 'validation', 'meta', 'backend'];
 
   const isObject = (value) => value && typeof value === 'object' && !Array.isArray(value);
 
@@ -80,6 +81,10 @@
 
   const historyFingerprint = (state) => JSON.stringify(pickHistoryShape(state));
 
+  const compareKeysChanged = (previousState, nextState, keys = []) => keys.some(
+    (key) => JSON.stringify(previousState?.[key]) !== JSON.stringify(nextState?.[key]),
+  );
+
   const createDefaultState = (seed = {}) => {
     const now = new Date().toISOString();
 
@@ -90,6 +95,8 @@
           title: 'Untitled Visual Plan',
           description: 'A visual workflow canvas for OpenClaw.',
           templateId: null,
+          serverPlanId: null,
+          serverVersionId: null,
           createdAt: now,
           updatedAt: now,
         },
@@ -131,6 +138,12 @@
         scenario: 'idle',
         statuses: {},
       },
+      backend: {
+        availability: 'unknown',
+        preferredStorage: 'local',
+        lastCheckedAt: null,
+        lastError: '',
+      },
       meta: {
         dirty: false,
         lastSavedAt: null,
@@ -171,9 +184,7 @@
     const replaceState = (nextState, options = {}) => {
       const previousState = state;
       const changed = historyFingerprint(previousState) !== historyFingerprint(nextState)
-        || JSON.stringify(previousState.selection) !== JSON.stringify(nextState.selection)
-        || JSON.stringify(previousState.validation) !== JSON.stringify(nextState.validation)
-        || JSON.stringify(previousState.meta) !== JSON.stringify(nextState.meta);
+        || compareKeysChanged(previousState, nextState, STATE_COMPARE_KEYS);
 
       if (!changed) {
         return false;
@@ -260,6 +271,9 @@
         replaceFromPartial(partial, options = {}) {
           const next = createDefaultState();
           merge(next, partial);
+          if (partial?.backend === undefined) {
+            next.backend = clone(state.backend);
+          }
           next.meta.dirty = options.dirty ?? true;
           return replaceState(next, { history: Boolean(options.history), reason: options.reason || 'document:replace' });
         },
@@ -564,6 +578,11 @@
               draft.ui.trayTab = 'validation';
             }
           }, { reason: options.reason || 'validation:update' });
+        },
+        setBackendState(patch = {}) {
+          return mutate((draft) => {
+            merge(draft.backend, patch || {});
+          }, { reason: 'backend:update' });
         },
         setRuntimeEnabled(enabled) {
           return mutate((draft) => {

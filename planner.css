@@ -1441,6 +1441,48 @@ svg text {
   line-height: 1.45;
 }
 
+.planner-server-list {
+  display: grid;
+  gap: 12px;
+}
+
+.planner-server-card {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  width: 100%;
+  padding: 16px 18px;
+  border-radius: 18px;
+  border: 1px solid var(--planner-border);
+  background: rgba(255, 255, 255, 0.035);
+  text-align: left;
+  transition: border-color 160ms ease, transform 160ms ease, background 160ms ease;
+}
+
+.planner-server-card:hover {
+  border-color: rgba(96, 205, 255, 0.36);
+  background: rgba(96, 205, 255, 0.06);
+  transform: translateY(-1px);
+}
+
+.planner-server-card__title {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--planner-text);
+}
+
+.planner-server-card__meta {
+  color: var(--planner-text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.planner-server-card__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 /* --------------------------------------------
    Responsive Rules
    -------------------------------------------- */

@@ -22,6 +22,20 @@
       const selectionCount = state.selection.nodeIds.length;
       const canArrange = selectionCount >= 2;
       const canDistribute = selectionCount >= 3;
+      const backendAvailability = state.backend?.availability || 'unknown';
+      const backendTone = backendAvailability === 'online'
+        ? 'is-success'
+        : backendAvailability === 'offline'
+          ? 'is-warning'
+          : 'is-info';
+      const backendLabel = backendAvailability === 'online'
+        ? 'Backend online'
+        : backendAvailability === 'offline'
+          ? 'Backend offline'
+          : 'Checking backend';
+      const storageLabel = state.backend?.preferredStorage === 'server'
+        ? 'Prefers server storage'
+        : 'Using local fallback';
       const savedLabel = state.meta.lastSavedAt
         ? `Saved ${new Date(state.meta.lastSavedAt).toLocaleTimeString()}`
         : 'Not saved yet';
@@ -77,6 +91,8 @@
           <div class="planner-toolbar__group">
             <button class="planner-button" type="button" data-action="save">Save</button>
             <button class="planner-button" type="button" data-action="load">Load</button>
+            <button class="planner-button" type="button" data-action="save-server">Save to Server</button>
+            <button class="planner-button" type="button" data-action="open-server">Open from Server</button>
             <button class="planner-button" type="button" data-action="export">Export</button>
             <button class="planner-button" type="button" data-action="import">Import</button>
             <button class="planner-button" type="button" data-action="shortcuts">Shortcuts</button>
@@ -90,6 +106,8 @@
           ${selectionCount ? `<span class="planner-chip is-info">${selectionCount} selected</span>` : ''}
           <span class="planner-chip">${zoom}% zoom</span>
           <span class="planner-chip ${state.meta.dirty ? 'is-warning' : ''}">${state.meta.dirty ? 'Unsaved changes' : savedLabel}</span>
+          <span class="planner-chip ${backendTone}">${backendLabel}</span>
+          <span class="planner-chip">${storageLabel}</span>
           ${meta.reason ? `<span class="planner-chip">${Planner.escapeHtml(meta.reason)}</span>` : ''}
         </div>
       `;
@@ -119,8 +137,10 @@
       if (action === 'toggle-minimap') actions.togglePreference?.('showMinimap');
       if (action === 'undo') actions.undo?.();
       if (action === 'redo') actions.redo?.();
-      if (action === 'save') actions.saveLocal?.();
-      if (action === 'load') actions.loadLocal?.();
+      if (action === 'save') actions.saveDocument?.();
+      if (action === 'load') actions.openDocument?.();
+      if (action === 'save-server') actions.saveServer?.();
+      if (action === 'open-server') actions.openServer?.();
       if (action === 'export') actions.exportJson?.();
       if (action === 'shortcuts') actions.openShortcuts?.();
       if (action === 'import') {
