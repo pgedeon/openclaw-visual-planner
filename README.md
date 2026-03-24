@@ -59,6 +59,6 @@ Apache License 2.0 with commercial use restriction.
 
 Free for individuals, open-source projects, non-profits, educational institutions, and companies with annual revenue ≤ $500,000 USD.
 
-Commercial entities with annual revenue exceeding $500,000 USD must obtain a commercial license. Contact **license@pgedeon.com** for details.
+Commercial entities with annual revenue exceeding $500,000 USD must obtain a commercial license. Contact **petermgedeon@gmail.com** for details.
 
 See [LICENSE](./LICENSE) for full terms.
