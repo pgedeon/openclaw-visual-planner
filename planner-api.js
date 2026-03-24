@@ -20,15 +20,43 @@
     }
   };
 
+  const readStateStoreValue = (stateStore, path) => {
+    if (!stateStore || typeof stateStore.getState !== 'function' || !path) {
+      return null;
+    }
+
+    try {
+      const value = stateStore.getState(path);
+      return value === undefined ? null : value;
+    } catch (error) {
+      return null;
+    }
+  };
+
+  const resolveShellProjectId = (shell = {}) => {
+    const adapterProjectId = shell.adapter?.getProjectId?.() || shell.adapter?.resolveProjectId?.() || null;
+    const stateStoreProjectId = readStateStoreValue(shell.stateStore, 'project.id')
+      || readStateStoreValue(shell.stateStore, 'project_id');
+    return adapterProjectId || stateStoreProjectId || null;
+  };
+
   function createPlannerApiClient(options = {}) {
     const baseUrl = String(options.baseUrl || '').replace(/\/$/, '');
+    const fetchImpl = typeof options.fetchImpl === 'function'
+      ? options.fetchImpl
+      : (typeof globalThis.fetch === 'function' ? globalThis.fetch.bind(globalThis) : null);
+    const shell = options.shell || {};
     let backendAvailable = null;
     let lastCheckedAt = 0;
 
     const buildUrl = (pathname) => `${baseUrl}${pathname}`;
 
     const requestJson = async (pathname, requestOptions = {}) => {
-      const response = await fetch(buildUrl(pathname), {
+      if (!fetchImpl) {
+        throw new Error('No fetch implementation is available for the planner API client.');
+      }
+
+      const response = await fetchImpl(buildUrl(pathname), {
         headers: {
           'Content-Type': 'application/json',
           ...(requestOptions.headers || {}),
@@ -55,6 +83,7 @@
     };
 
     return {
+      shell,
       async probeBackend({ force = false } = {}) {
         if (!force && backendAvailable !== null && Date.now() - lastCheckedAt < 15000) {
           return backendAvailable;
@@ -72,6 +101,18 @@
       },
       getBackendAvailability() {
         return backendAvailable;
+      },
+      getShellApi() {
+        return shell.api || null;
+      },
+      getStateStore() {
+        return shell.stateStore || null;
+      },
+      getSync() {
+        return shell.sync || null;
+      },
+      getProjectId() {
+        return resolveShellProjectId(shell);
       },
       async listPlans() {
         const payload = await withAvailability(() => requestJson('/api/plans'));

@@ -248,8 +248,38 @@
     `;
   };
 
-  function createPlannerInspector({ mountNode, store }) {
+  function createPlannerInspector({ mountNode, store, actions = {} }) {
     let cleanup = [];
+
+    const renderNodeIntegrations = (node) => {
+      const integrationButtons = [];
+
+      if (node.type === 'task') {
+        integrationButtons.push('<button type="button" class="planner-button planner-button--ghost" data-node-integration="open-task">Open in Tasks</button>');
+      }
+      if (node.type === 'agent') {
+        integrationButtons.push('<button type="button" class="planner-button planner-button--ghost" data-node-integration="open-agent">Open Agent</button>');
+      }
+      if (node.type === 'artifact') {
+        integrationButtons.push('<button type="button" class="planner-button planner-button--ghost" data-node-integration="open-file">Open File</button>');
+      }
+      if (node.type === 'workflow-step') {
+        integrationButtons.push('<button type="button" class="planner-button planner-button--ghost" data-node-integration="edit-notepad">Edit in Notepad</button>');
+      }
+
+      if (!integrationButtons.length) {
+        return '';
+      }
+
+      return `
+        <div class="planner-inspector__section">
+          <div class="planner-section-title">Integrations</div>
+          <div class="planner-chip-stack planner-inspector__actions">
+            ${integrationButtons.join('')}
+          </div>
+        </div>
+      `;
+    };
 
     const renderEmpty = (state) => `
       <div class="planner-panel__header">
@@ -341,6 +371,7 @@
             <span class="planner-chip">${Planner.escapeHtml(node.data?.visualStyle || 'default')} style</span>
           </div>
         </div>
+        ${renderNodeIntegrations(node)}
         <div class="planner-inspector__section">
           <div class="planner-section-title">Properties</div>
           <div class="planner-inspector__fields">
@@ -516,6 +547,38 @@
       const deleteButton = event.target.closest('[data-delete-selection]');
       if (deleteButton) {
         store.actions.removeSelection();
+        return;
+      }
+
+      const integrationButton = event.target.closest('[data-node-integration]');
+      if (!integrationButton) {
+        return;
+      }
+
+      const state = store.getState();
+      const nodeId = state.selection.nodeIds?.[0];
+      const node = state.selection.type === 'node' && nodeId
+        ? state.document.graph.nodes.find((item) => item.id === nodeId)
+        : null;
+
+      if (!node) {
+        return;
+      }
+
+      if (integrationButton.dataset.nodeIntegration === 'open-task') {
+        actions.openTaskNode?.(node);
+      }
+
+      if (integrationButton.dataset.nodeIntegration === 'open-agent') {
+        actions.openAgentNode?.(node);
+      }
+
+      if (integrationButton.dataset.nodeIntegration === 'open-file') {
+        actions.openArtifactNode?.(node);
+      }
+
+      if (integrationButton.dataset.nodeIntegration === 'edit-notepad') {
+        actions.editWorkflowStepInNotepad?.(node);
       }
     };
 

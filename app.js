@@ -44,6 +44,31 @@
 
   const queryWithin = (rootNode, selector) => rootNode?.querySelector?.(selector) || document.querySelector(selector);
 
+  const readStateStoreValue = (stateStore, path) => {
+    if (!stateStore || typeof stateStore.getState !== 'function' || !path) {
+      return null;
+    }
+
+    try {
+      const value = stateStore.getState(path);
+      return value === undefined ? null : value;
+    } catch (error) {
+      return null;
+    }
+  };
+
+  const subscribeStateStoreValue = (stateStore, path, callback) => {
+    if (!stateStore || typeof stateStore.subscribe !== 'function' || !path || typeof callback !== 'function') {
+      return () => {};
+    }
+
+    try {
+      return stateStore.subscribe(path, callback);
+    } catch (error) {
+      return () => {};
+    }
+  };
+
   const createNotifier = (host) => {
     let activeToasts = [];
 
@@ -146,6 +171,42 @@
     `;
   };
 
+  const renderNotepadModal = (modalState = {}) => {
+    const title = modalState.title || 'Workflow Step Payload';
+    const stepName = modalState.stepName || '';
+    const stepType = modalState.stepType || '';
+    const payload = modalState.payload || '';
+
+    return `
+      <div class="planner-modal__dialog planner-modal__dialog--wide planner-notepad-modal" role="dialog" aria-modal="true" aria-labelledby="planner-notepad-title">
+        <div class="planner-modal__header">
+          <div>
+            <div class="planner-panel__eyebrow">Notepad Handoff</div>
+            <h2 id="planner-notepad-title" class="planner-panel__title">${Planner.escapeHtml(title)}</h2>
+          </div>
+          <button type="button" class="planner-button planner-button--ghost" data-modal-close="true">Close</button>
+        </div>
+        <div class="planner-chip-stack">
+          ${stepName ? `<span class="planner-chip">${Planner.escapeHtml(stepName)}</span>` : ''}
+          ${stepType ? `<span class="planner-chip">${Planner.escapeHtml(stepType)}</span>` : ''}
+          <span class="planner-chip">Planner step payload</span>
+        </div>
+        <label class="planner-field planner-notepad-modal__field" for="planner-notepad-editor">
+          <span class="planner-field__row">
+            <span class="planner-field__label">Prompt / Payload</span>
+            <span class="planner-field__indicator is-info">Edit</span>
+          </span>
+          <textarea class="planner-textarea planner-notepad-modal__editor" id="planner-notepad-editor" data-notepad-editor="true" spellcheck="false" placeholder="Draft execution notes, JSON payloads, prompts, or runbook handoff details...">${Planner.escapeHtml(payload)}</textarea>
+          <span class="planner-field__hint">Save to write the latest payload back to this workflow step.</span>
+        </label>
+        <div class="planner-notepad-modal__actions">
+          <button type="button" class="planner-button planner-button--ghost" data-modal-close="true">Cancel</button>
+          <button type="button" class="planner-button planner-button--primary" data-save-notepad="true">Save Payload</button>
+        </div>
+      </div>
+    `;
+  };
+
   const buildSelectionFragment = (store) => {
     const state = store.getState();
     const nodeIds = state.selection.type === 'node' ? state.selection.nodeIds.slice() : [];
@@ -219,6 +280,11 @@
     const notify = createNotifier(toastHost);
     const store = providedStore || Planner.createPlannerStore();
     const apiClient = services.apiClient || Planner.createPlannerApiClient?.({ baseUrl: services.apiBaseUrl || '' }) || null;
+    const shellApi = services.api || apiClient?.getShellApi?.() || null;
+    const shellStateStore = services.stateStore || apiClient?.getStateStore?.() || services.adapter?.stateStore || null;
+    const shellSync = services.sync || apiClient?.getSync?.() || null;
+    const shellAdapter = services.adapter || apiClient?.shell?.adapter || null;
+    const navigateToView = services.navigateToView || services.navigateTo || shellAdapter?.navigateTo || null;
     let autosaveTimer = 0;
     let validationTimer = 0;
     let bootstrapPromise = Promise.resolve();
@@ -226,6 +292,122 @@
     let clipboardFragment = store.getState().clipboard.fragment || null;
     let pasteCount = 0;
     let destroyed = false;
+    let autosaveUnsubscribe = null;
+    const shellCleanupFns = [];
+
+    const navigateToShellView = (viewId, payload = {}, fallbackMessage = '') => {
+      if (typeof navigateToView !== 'function') {
+        if (fallbackMessage) {
+          notify(fallbackMessage, 'info');
+        }
+        return false;
+      }
+
+      try {
+        navigateToView(viewId, {
+          source: 'visual-planner',
+          requestedAt: new Date().toISOString(),
+          ...payload,
+        });
+        return true;
+      } catch (error) {
+        notify(error.message || `Unable to open ${viewId}.`, 'error');
+        return false;
+      }
+    };
+
+    const getSelectedWorkflowRunId = () => readStateStoreValue(shellStateStore, 'selection.workflowRunId')
+      || readStateStoreValue(shellStateStore, 'workflow.selectedRunId');
+
+    const syncSelectedWorkflowRun = async (syncData = null) => {
+      const runId = getSelectedWorkflowRunId();
+      if (!runId) {
+        return false;
+      }
+
+      const activeRuns = Array.isArray(syncData?.activeWorkflowRuns?.runs)
+        ? syncData.activeWorkflowRuns.runs
+        : Array.isArray(shellSync?.activeWorkflowRuns?.runs)
+          ? shellSync.activeWorkflowRuns.runs
+          : [];
+      const activeRun = activeRuns.find((run) => String(run.id) === String(runId));
+
+      if (activeRun) {
+        Planner.applyPlannerWorkflowRunStatus?.(store, activeRun);
+        return true;
+      }
+
+      if (typeof shellApi?.workflows?.get !== 'function') {
+        return false;
+      }
+
+      try {
+        const payload = await shellApi.workflows.get(runId);
+        Planner.applyPlannerWorkflowRunStatus?.(store, payload);
+        return true;
+      } catch (error) {
+        notify(error.message || 'Failed to sync the selected workflow run.', 'warning');
+        return false;
+      }
+    };
+
+    const openTaskNodeInShell = (node) => {
+      const title = node?.data?.title || Planner.getPlannerNodeType(node?.type || 'task').label;
+      navigateToShellView('tasks', {
+        plannerNodeId: node?.id,
+        taskId: node?.data?.taskId || null,
+        title,
+        query: title,
+        assigneeAgent: node?.data?.assigneeAgent || '',
+        priority: node?.data?.priority || '',
+        status: node?.data?.status || '',
+      }, 'Open in Tasks is available inside the WebOS shell.');
+    };
+
+    const openAgentNodeInShell = (node) => {
+      const agentName = node?.data?.agentName || node?.data?.title || 'Selected agent';
+      navigateToShellView('agents', {
+        plannerNodeId: node?.id,
+        agentId: node?.data?.agentId || null,
+        agentName,
+        role: node?.data?.role || '',
+      }, 'Open Agent is available inside the WebOS shell.');
+    };
+
+    const openArtifactNodeInShell = (node) => {
+      const filePath = String(node?.data?.filePath || '').trim();
+      if (!filePath) {
+        notify('Add a file path before opening this artifact.', 'warning');
+        return;
+      }
+
+      const targetView = node?.data?.artifactType === 'url' || /^https?:\/\//i.test(filePath)
+        ? 'artifacts'
+        : 'explorer';
+
+      navigateToShellView(targetView, {
+        plannerNodeId: node?.id,
+        path: filePath,
+        filePath,
+        uri: filePath,
+        artifactType: node?.data?.artifactType || '',
+      }, 'Open File is available inside the WebOS shell.');
+    };
+
+    const openWorkflowStepNotepad = (node) => {
+      if (!node || node.type !== 'workflow-step') {
+        return;
+      }
+
+      setModal({
+        type: 'notepad-handoff',
+        nodeId: node.id,
+        title: node.data?.title || node.data?.stepName || 'Workflow Step Payload',
+        stepName: node.data?.stepName || '',
+        stepType: node.data?.stepType || '',
+        payload: node.data?.promptPayload || '',
+      });
+    };
 
     const setModal = (nextModal) => {
       modalState = nextModal;
@@ -247,6 +429,8 @@
             ? renderShortcutsModal()
             : modalState.type === 'server-browser'
               ? renderServerPlansModal(modalState)
+              : modalState.type === 'notepad-handoff'
+                ? renderNotepadModal(modalState)
               : ''}
         </div>
       `;
@@ -788,6 +972,12 @@
     const inspector = Planner.createPlannerInspector({
       mountNode: inspectorMount,
       store,
+      actions: {
+        openTaskNode: openTaskNodeInShell,
+        openAgentNode: openAgentNodeInShell,
+        openArtifactNode: openArtifactNodeInShell,
+        editWorkflowStepInNotepad: openWorkflowStepNotepad,
+      },
     });
 
     const tray = Planner.createPlannerTray({
@@ -877,6 +1067,7 @@
 
     const handleModalClick = (event) => {
       const planButton = event.target.closest('[data-open-server-plan]');
+      const saveNotepadButton = event.target.closest('[data-save-notepad="true"]');
       const closeButton = event.target.closest('[data-modal-close="true"]');
       const backdrop = event.target.closest('[data-modal-backdrop="true"]');
       const insideDialog = event.target.closest('.planner-modal__dialog');
@@ -884,6 +1075,25 @@
       if (planButton) {
         setModal(null);
         actions.openServer(planButton.dataset.openServerPlan);
+        return;
+      }
+
+      if (saveNotepadButton && modalState?.type === 'notepad-handoff') {
+        const editor = modalHost?.querySelector('[data-notepad-editor="true"]');
+        const nodeId = modalState.nodeId;
+
+        if (!editor || !nodeId) {
+          setModal(null);
+          return;
+        }
+
+        store.actions.updateNode(nodeId, {
+          data: {
+            promptPayload: editor.value,
+          },
+        }, { history: true, reason: 'inspector:notepad-handoff' });
+        setModal(null);
+        notify('Saved the workflow step payload.', 'success');
         return;
       }
 
@@ -897,7 +1107,7 @@
       }
     };
 
-    store.subscribe((state, meta) => {
+    autosaveUnsubscribe = store.subscribe((state, meta) => {
       const reason = meta.reason || '';
       if (/^(selection:|viewport|history:|meta:|validation:|simulation:|subscribe$|clipboard:|backend:|runtime:sync)/.test(reason)) {
         return;
@@ -906,6 +1116,25 @@
       scheduleAutosave();
       scheduleValidation();
     });
+
+    if (shellStateStore) {
+      shellCleanupFns.push(subscribeStateStoreValue(shellStateStore, 'selection.workflowRunId', () => {
+        syncSelectedWorkflowRun().catch(() => {});
+      }));
+      shellCleanupFns.push(subscribeStateStoreValue(shellStateStore, 'workflow.selectedRunId', () => {
+        syncSelectedWorkflowRun().catch(() => {});
+      }));
+    }
+
+    if (shellSync?.subscribe) {
+      shellCleanupFns.push(shellSync.subscribe((data, changedKeys = []) => {
+        if (!Array.isArray(changedKeys) || !changedKeys.includes('activeWorkflowRuns')) {
+          return;
+        }
+
+        syncSelectedWorkflowRun(data).catch(() => {});
+      }));
+    }
 
     const hydrateInitialDocument = async () => {
       const savedDraft = Planner.loadPlannerFromLocalStorage(Planner.PLANNER_LOCAL_STORAGE_KEY);
@@ -955,6 +1184,7 @@
       }
 
       runValidation({ openTray: false, silent: true });
+      await syncSelectedWorkflowRun();
     };
 
     bootstrapPromise = hydrateInitialDocument();
@@ -973,6 +1203,8 @@
       saveLocal({ silent: true });
       window.removeEventListener('keydown', handleGlobalKeyDown);
       modalHost?.removeEventListener('click', handleModalClick);
+      autosaveUnsubscribe?.();
+      shellCleanupFns.forEach((cleanup) => cleanup?.());
       setModal(null);
       toolbar.destroy();
       palette.destroy();

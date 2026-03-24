@@ -708,6 +708,10 @@ svg text {
   line-height: 1.5;
 }
 
+.planner-inspector__actions .planner-button {
+  min-width: 0;
+}
+
 .planner-inspector__stats {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1429,6 +1433,28 @@ svg text {
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 18px;
+}
+
+.planner-notepad-modal {
+  display: grid;
+  gap: 18px;
+}
+
+.planner-notepad-modal__field {
+  gap: 10px;
+}
+
+.planner-notepad-modal__editor {
+  min-height: min(48vh, 420px);
+  font-family: "SF Mono", "Consolas", "Courier New", monospace;
+  line-height: 1.55;
+  tab-size: 2;
+}
+
+.planner-notepad-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 .planner-shortcuts-grid {

@@ -1,0 +1,29 @@
+diff --git a/src/shell/app-registry.mjs b/src/shell/app-registry.mjs
+--- a/src/shell/app-registry.mjs
++++ b/src/shell/app-registry.mjs
+@@
+   {
+     id: 'timeline',
+     label: 'Timeline',
+     icon: appIcon.timeline,
+     url: '/?view=timeline',
+     viewModule: './native-views/timeline-view.mjs',
+     category: 'Work',
+     defaultWidth: 1180,
+     defaultHeight: 760,
+   },
++  {
++    id: 'planner',
++    label: 'Visual Planner',
++    icon: appIcon.links,
++    url: '/?view=planner',
++    viewModule: './native-views/planner-view.mjs',
++    category: 'Work',
++    defaultWidth: 1240,
++    defaultHeight: 820,
++  },
+   {
+     id: 'agents',
+     label: 'Agents',
+     icon: appIcon.robot,
+     url: '/?view=agents',
