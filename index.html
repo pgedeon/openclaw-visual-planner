@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>OpenClaw Visual Planner</title>
+    <meta
+      name="description"
+      content="OpenClaw Visual Planner — a standalone vanilla JavaScript workflow canvas aligned with the openclaw-project-webos shell aesthetic."
+    />
+    <link rel="stylesheet" href="./planner.css" />
+  </head>
+  <body data-planner-standalone="true">
+    <div class="planner-app">
+      <div class="planner-app__backdrop" aria-hidden="true"></div>
+
+      <div class="planner-window">
+        <header
+          id="planner-toolbar"
+          class="planner-toolbar planner-panel planner-glass"
+          aria-label="Planner toolbar"
+        ></header>
+
+        <main class="planner-workspace" aria-label="Planner workspace">
+          <aside
+            id="planner-palette"
+            class="planner-sidebar planner-panel planner-glass"
+            aria-label="Node palette"
+          ></aside>
+
+          <section
+            id="planner-canvas"
+            class="planner-stage planner-glass"
+            aria-label="Workflow canvas"
+          ></section>
+
+          <aside
+            id="planner-inspector"
+            class="planner-sidebar planner-panel planner-glass"
+            aria-label="Inspector"
+          ></aside>
+        </main>
+
+        <section
+          id="planner-tray"
+          class="planner-tray planner-panel planner-glass"
+          aria-label="Validation and runtime tray"
+        ></section>
+      </div>
+
+      <div id="planner-toast-host" class="planner-toast-host" aria-live="polite" aria-atomic="true"></div>
+      <div id="planner-modal-host" class="planner-modal-host" aria-live="polite" hidden></div>
+    </div>
+
+    <script defer src="./planner-store.js"></script>
+    <script defer src="./planner-nodes.js"></script>
+    <script defer src="./planner-edges.js"></script>
+    <script defer src="./planner-layout.js"></script>
+    <script defer src="./planner-serializer.js"></script>
+    <script defer src="./planner-validator.js"></script>
+    <script defer src="./planner-templates.js"></script>
+    <script defer src="./planner-runtime.js"></script>
+    <script defer src="./planner-palette.js"></script>
+    <script defer src="./planner-inspector.js"></script>
+    <script defer src="./planner-toolbar.js"></script>
+    <script defer src="./planner-canvas.js"></script>
+    <script defer src="./planner-api.js"></script>
+    <script defer src="./app.js"></script>
+  </body>
+</html>
