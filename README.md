@@ -17,7 +17,21 @@ A native windowed app inside the WebOS desktop shell that lets you:
 
 🟢 **Phase 4 complete** — full standalone planner with backend, workflow export, and simulation
 
-See [PROGRESS.md](./PROGRESS.md) for detailed phase tracking and milestones.
+See [PROGRESS.md](./PROGRESS.md)
+
+## Screenshots
+
+### Main View — Canvas with Palette, Inspector, and Tray
+
+![OpenClaw Visual Planner — Main View](docs/screenshots/main-view.png)
+
+### Toolbar with Overflow Menu
+
+The toolbar keeps core actions visible while less-frequent tools live in the ⋯ overflow dropdown.
+
+![OpenClaw Visual Planner — Overflow Menu](docs/screenshots/overflow-menu.png)
+
+ for detailed phase tracking and milestones.
 
 ## Quick Start
 
