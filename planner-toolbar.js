@@ -54,7 +54,7 @@
         : 'Unsaved';
 
       mountNode.innerHTML = `
-        <div class="planner-toolbar planner-toolbar--compact">
+        <div class="planner-toolbar">
           <div class="planner-toolbar__brand">
             <div class="planner-toolbar__logo">OC</div>
             <div>

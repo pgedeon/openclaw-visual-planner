@@ -193,7 +193,8 @@ svg text {
 }
 
 .planner-toolbar {
-  padding: 18px 20px;
+  padding: 10px 12px;
+  gap: 8px;
 }
 
 .planner-sidebar {
@@ -1610,20 +1611,17 @@ svg text {
   }
 }
 
-/* --------------------------------------------
-   Compact Toolbar (Option 4 — Hybrid)
-   -------------------------------------------- */
 
-.planner-toolbar--compact {
+.planner-toolbar {
   padding: 10px 12px;
   gap: 8px;
 }
 
-.planner-toolbar--compact .planner-toolbar__brand {
+.planner-toolbar .planner-toolbar__brand {
   gap: 10px;
 }
 
-.planner-toolbar--compact .planner-toolbar__logo {
+.planner-toolbar .planner-toolbar__logo {
   width: 28px;
   height: 28px;
   border-radius: 10px;
@@ -1632,41 +1630,41 @@ svg text {
   box-shadow: 0 4px 10px rgba(96, 205, 255, 0.14);
 }
 
-.planner-toolbar--compact .planner-toolbar__title {
+.planner-toolbar .planner-toolbar__title {
   font-size: 0.88rem;
   font-weight: 700;
   line-height: 1.2;
 }
 
-.planner-toolbar--compact .planner-toolbar__subtitle {
+.planner-toolbar .planner-toolbar__subtitle {
   display: none;
 }
 
-.planner-toolbar--compact .planner-toolbar__controls {
+.planner-toolbar .planner-toolbar__controls {
   gap: 6px;
 }
 
-.planner-toolbar--compact .planner-toolbar__group {
+.planner-toolbar .planner-toolbar__group {
   padding: 4px 6px;
   border-radius: 12px;
   gap: 4px;
 }
 
-.planner-toolbar--compact .planner-button,
-.planner-toolbar--compact .planner-chip-button,
-.planner-toolbar--compact .planner-segment {
+.planner-toolbar .planner-button,
+.planner-toolbar .planner-chip-button,
+.planner-toolbar .planner-segment {
   min-height: 28px;
   padding: 0 10px;
   font-size: 0.78rem;
 }
 
-.planner-toolbar--compact .planner-icon-button {
+.planner-toolbar .planner-icon-button {
   width: 28px;
   height: 28px;
   font-size: 0.88rem;
 }
 
-.planner-toolbar--compact .planner-toolbar__group--segmented .planner-segment {
+.planner-toolbar .planner-toolbar__group--segmented .planner-segment {
   padding: 0 10px;
   min-height: 28px;
   font-size: 0.75rem;
@@ -1730,12 +1728,12 @@ svg text {
 }
 
 /* Compact status */
-.planner-toolbar--compact .planner-toolbar__status {
+.planner-toolbar .planner-toolbar__status {
   flex-wrap: wrap;
   gap: 4px;
 }
 
-.planner-toolbar--compact .planner-chip {
+.planner-toolbar .planner-chip {
   font-size: 0.7rem;
   padding: 2px 8px;
 }
