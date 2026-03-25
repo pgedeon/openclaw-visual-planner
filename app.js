@@ -860,7 +860,7 @@
       return true;
     };
 
-    const canvas = Planner.createPlannerCanvas({ mountNode: canvasMount, store, notify });
+    canvas = Planner.createPlannerCanvas({ mountNode: canvasMount, store, notify });
 
     const actions = {
       setMode(mode) {

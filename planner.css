@@ -1607,3 +1607,133 @@ svg text {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* --------------------------------------------
+   Compact Toolbar (Option 4 — Hybrid)
+   -------------------------------------------- */
+
+.planner-toolbar--compact {
+  padding: 10px 12px;
+  gap: 8px;
+}
+
+.planner-toolbar--compact .planner-toolbar__brand {
+  gap: 10px;
+}
+
+.planner-toolbar--compact .planner-toolbar__logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 10px;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  box-shadow: 0 4px 10px rgba(96, 205, 255, 0.14);
+}
+
+.planner-toolbar--compact .planner-toolbar__title {
+  font-size: 0.88rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.planner-toolbar--compact .planner-toolbar__subtitle {
+  display: none;
+}
+
+.planner-toolbar--compact .planner-toolbar__controls {
+  gap: 6px;
+}
+
+.planner-toolbar--compact .planner-toolbar__group {
+  padding: 4px 6px;
+  border-radius: 12px;
+  gap: 4px;
+}
+
+.planner-toolbar--compact .planner-button,
+.planner-toolbar--compact .planner-chip-button,
+.planner-toolbar--compact .planner-segment {
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 0.78rem;
+}
+
+.planner-toolbar--compact .planner-icon-button {
+  width: 28px;
+  height: 28px;
+  font-size: 0.88rem;
+}
+
+.planner-toolbar--compact .planner-toolbar__group--segmented .planner-segment {
+  padding: 0 10px;
+  min-height: 28px;
+  font-size: 0.75rem;
+}
+
+/* Overflow menu */
+.planner-toolbar__overflow-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.planner-toolbar__overflow-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 100;
+  min-width: 180px;
+  padding: 6px;
+  border-radius: 12px;
+  border: 1px solid var(--planner-border);
+  background: var(--planner-surface);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.planner-toolbar__overflow-menu.is-open {
+  display: flex;
+}
+
+.planner-toolbar__overflow-menu .planner-overflow-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--planner-text);
+  font-size: 0.82rem;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.planner-toolbar__overflow-menu .planner-overflow-item:hover {
+  background: var(--planner-surface-hover);
+}
+
+.planner-toolbar__overflow-menu .planner-overflow-item:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.planner-toolbar__overflow-menu .planner-overflow-divider {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--planner-border);
+}
+
+/* Compact status */
+.planner-toolbar--compact .planner-toolbar__status {
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.planner-toolbar--compact .planner-chip {
+  font-size: 0.7rem;
+  padding: 2px 8px;
+}

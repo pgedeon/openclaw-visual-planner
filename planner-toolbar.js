@@ -2,8 +2,8 @@
  * OpenClaw Visual Planner
  * planner-toolbar.js
  *
- * The toolbar keeps core actions discoverable while staying close to the WebOS
- * aesthetic: compact controls, segmented modes, and subtle status chips.
+ * Compact hybrid toolbar: mini-brand + icon rows + overflow menu.
+ * Keeps core actions visible, moves infrequent tools into a ⋯ dropdown.
  */
 
 (() => {
@@ -11,6 +11,19 @@
 
   function createPlannerToolbar({ mountNode, store, actions = {} }) {
     let cleanup = [];
+    let overflowOpen = false;
+
+    const closeOverflow = () => {
+      overflowOpen = false;
+      const menu = mountNode.querySelector('.planner-toolbar__overflow-menu');
+      if (menu) menu.classList.remove('is-open');
+    };
+
+    const toggleOverflow = () => {
+      overflowOpen = !overflowOpen;
+      const menu = mountNode.querySelector('.planner-toolbar__overflow-menu');
+      if (menu) menu.classList.toggle('is-open', overflowOpen);
+    };
 
     const render = (_, meta = {}) => {
       const state = store.getState();
@@ -34,86 +47,99 @@
           ? 'Backend offline'
           : 'Checking backend';
       const storageLabel = state.backend?.preferredStorage === 'server'
-        ? 'Prefers server storage'
-        : 'Using local fallback';
+        ? 'Server storage'
+        : 'Local storage';
       const savedLabel = state.meta.lastSavedAt
         ? `Saved ${new Date(state.meta.lastSavedAt).toLocaleTimeString()}`
-        : 'Not saved yet';
+        : 'Unsaved';
 
       mountNode.innerHTML = `
-        <div class="planner-toolbar__brand">
-          <div class="planner-toolbar__logo">OC</div>
-          <div>
-            <div class="planner-toolbar__title">OpenClaw Visual Planner</div>
-            <div class="planner-toolbar__subtitle">Standalone workflow canvas with graph editing, validation, and runtime overlays</div>
-          </div>
-        </div>
-        <div class="planner-toolbar__controls">
-          <div class="planner-toolbar__group planner-toolbar__group--segmented">
-            ${['sketch', 'workflow', 'runtime'].map((mode) => `
-              <button class="planner-segment ${state.ui.mode === mode ? 'is-active' : ''}" type="button" data-mode="${mode}">${mode}</button>
-            `).join('')}
+        <div class="planner-toolbar planner-toolbar--compact">
+          <div class="planner-toolbar__brand">
+            <div class="planner-toolbar__logo">OC</div>
+            <div>
+              <div class="planner-toolbar__title">Visual Planner</div>
+            </div>
           </div>
 
-          <div class="planner-toolbar__group">
-            <label class="planner-toolbar__label" for="planner-template-picker">Template</label>
-            <select class="planner-select" id="planner-template-picker" data-template-picker="true">
-              <option value="">Choose a starter template…</option>
-              ${templates.map((template) => `<option value="${template.id}"${state.document.metadata.templateId === template.id ? ' selected' : ''}>${Planner.escapeHtml(template.label)}</option>`).join('')}
-            </select>
+          <div class="planner-toolbar__controls">
+            <div class="planner-toolbar__group planner-toolbar__group--segmented">
+              ${['sketch', 'workflow', 'runtime'].map((mode) => `
+                <button class="planner-segment ${state.ui.mode === mode ? 'is-active' : ''}" type="button" data-mode="${mode}">${mode}</button>
+              `).join('')}
+            </div>
+
+            <div class="planner-toolbar__group">
+              <button class="planner-button planner-button--primary" type="button" data-action="validate">✓ Check</button>
+              <button class="planner-button" type="button" data-action="fit">⊞ Fit</button>
+              <button class="planner-button" type="button" data-action="tidy">⬡ Tidy</button>
+            </div>
+
+            <div class="planner-toolbar__group">
+              <button class="planner-button" type="button" data-action="toggle-grid" title="Toggle grid">${state.preferences.showGrid ? '▣' : '▢'}</button>
+              <button class="planner-button" type="button" data-action="toggle-snap" title="Toggle snap">${state.preferences.snapToGrid ? '◉' : '○'}</button>
+              <button class="planner-button" type="button" data-action="toggle-minimap" title="Toggle minimap">⊞</button>
+              <button class="planner-button" type="button" data-action="toggle-inspector" title="Toggle inspector">⫙</button>
+            </div>
+
+            <div class="planner-toolbar__group">
+              <button class="planner-button" type="button" data-action="undo"${canUndo ? '' : ' disabled'} title="Undo (Ctrl+Z)">↩</button>
+              <button class="planner-button" type="button" data-action="redo"${canRedo ? '' : ' disabled'} title="Redo (Ctrl+Y)">↪</button>
+            </div>
+
+            <div class="planner-toolbar__group">
+              <button class="planner-button" type="button" data-action="save" title="Save (Ctrl+S)">💾 Save</button>
+              <button class="planner-button" type="button" data-action="export" title="Export JSON">⤓ Export</button>
+            </div>
+
+            <div class="planner-toolbar__overflow-wrap">
+              <button class="planner-button" type="button" data-action="toggle-overflow" title="More actions">⋯</button>
+              <div class="planner-toolbar__overflow-menu${overflowOpen ? ' is-open' : ''}">
+                <label class="planner-toolbar__label" style="padding:4px 10px 2px;font-size:0.68rem;">Template</label>
+                <select class="planner-select" data-template-picker="true" style="margin:0 4px 4px;font-size:0.8rem;">
+                  <option value="">Choose starter…</option>
+                  ${templates.map((t) => `<option value="${t.id}"${state.document.metadata.templateId === t.id ? ' selected' : ''}>${Planner.escapeHtml(t.label)}</option>`).join('')}
+                </select>
+                <div class="planner-overflow-divider"></div>
+                <button class="planner-overflow-item" type="button" data-action="simulate">▶ Simulate</button>
+                <button class="planner-overflow-item" type="button" data-action="export-workflow">⤓ Export Workflow</button>
+                <button class="planner-overflow-item" type="button" data-action="new">⊘ New Blank</button>
+                <div class="planner-overflow-divider"></div>
+                <button class="planner-overflow-item" type="button" data-action="align-left"${canArrange ? '' : ' disabled'}>Align Left${canArrange ? '' : ' (need 2+)'}</button>
+                <button class="planner-overflow-item" type="button" data-action="align-top"${canArrange ? '' : ' disabled'}>Align Top${canArrange ? '' : ' (need 2+)'}</button>
+                <button class="planner-overflow-item" type="button" data-action="distribute-x"${canDistribute ? '' : ' disabled'}>Distribute X${canDistribute ? '' : ' (need 3+)'}</button>
+                <button class="planner-overflow-item" type="button" data-action="distribute-y"${canDistribute ? '' : ' disabled'}>Distribute Y${canDistribute ? '' : ' (need 3+)'}</button>
+                <div class="planner-overflow-divider"></div>
+                <button class="planner-overflow-item" type="button" data-action="load">📂 Load</button>
+                <button class="planner-overflow-item" type="button" data-action="save-server">☁ Save to Server</button>
+                <button class="planner-overflow-item" type="button" data-action="open-server">☁ Open from Server</button>
+                <button class="planner-overflow-item" type="button" data-action="import">📥 Import</button>
+                <div class="planner-overflow-divider"></div>
+                <button class="planner-overflow-item" type="button" data-action="shortcuts">⌨ Shortcuts</button>
+              </div>
+            </div>
           </div>
 
-          <div class="planner-toolbar__group">
-            <button class="planner-button planner-button--primary" type="button" data-action="validate">Validate</button>
-            <button class="planner-button" type="button" data-action="simulate">Simulate</button>
-            <button class="planner-button" type="button" data-action="export-workflow">Export Workflow</button>
-            <button class="planner-button" type="button" data-action="fit">Fit View</button>
-            <button class="planner-button" type="button" data-action="tidy">Tidy Graph</button>
-            <button class="planner-button" type="button" data-action="new">Blank</button>
+          <div class="planner-toolbar__status">
+            <span class="planner-chip ${issues.length ? 'is-warning' : 'is-success'}">${issues.length} issue${issues.length === 1 ? '' : 's'}</span>
+            <span class="planner-chip">${state.document.graph.nodes.length} nodes</span>
+            <span class="planner-chip">${state.document.graph.edges.length} edges</span>
+            ${selectionCount ? `<span class="planner-chip is-info">${selectionCount} sel</span>` : ''}
+            <span class="planner-chip">${zoom}%</span>
+            <span class="planner-chip ${state.meta.dirty ? 'is-warning' : ''}">${state.meta.dirty ? '● modified' : savedLabel}</span>
+            <span class="planner-chip ${backendTone}">${backendLabel}</span>
+            <span class="planner-chip">${storageLabel}</span>
+            ${meta.reason ? `<span class="planner-chip">${Planner.escapeHtml(meta.reason)}</span>` : ''}
           </div>
-
-          <div class="planner-toolbar__group">
-            <button class="planner-button" type="button" data-action="align-left"${canArrange ? '' : ' disabled'}>Align Left</button>
-            <button class="planner-button" type="button" data-action="align-top"${canArrange ? '' : ' disabled'}>Align Top</button>
-            <button class="planner-button" type="button" data-action="distribute-x"${canDistribute ? '' : ' disabled'}>Distribute X</button>
-            <button class="planner-button" type="button" data-action="distribute-y"${canDistribute ? '' : ' disabled'}>Distribute Y</button>
-          </div>
-
-          <div class="planner-toolbar__group">
-            <button class="planner-button" type="button" data-action="toggle-grid">${state.preferences.showGrid ? 'Hide Grid' : 'Show Grid'}</button>
-            <button class="planner-button" type="button" data-action="toggle-snap">Snap ${state.preferences.snapToGrid ? 'On' : 'Off'}</button>
-            <button class="planner-button" type="button" data-action="toggle-minimap">Map ${state.preferences.showMinimap ? 'On' : 'Off'}</button>
-            <button class="planner-button" type="button" data-action="toggle-inspector">Inspector</button>
-          </div>
-
-          <div class="planner-toolbar__group">
-            <button class="planner-button" type="button" data-action="undo"${canUndo ? '' : ' disabled'}>Undo</button>
-            <button class="planner-button" type="button" data-action="redo"${canRedo ? '' : ' disabled'}>Redo</button>
-          </div>
-
-          <div class="planner-toolbar__group">
-            <button class="planner-button" type="button" data-action="save">Save</button>
-            <button class="planner-button" type="button" data-action="load">Load</button>
-            <button class="planner-button" type="button" data-action="save-server">Save to Server</button>
-            <button class="planner-button" type="button" data-action="open-server">Open from Server</button>
-            <button class="planner-button" type="button" data-action="export">Export</button>
-            <button class="planner-button" type="button" data-action="import">Import</button>
-            <button class="planner-button" type="button" data-action="shortcuts">Shortcuts</button>
-            <input type="file" accept="application/json,.json" hidden data-import-input="true" />
-          </div>
-        </div>
-        <div class="planner-toolbar__status">
-          <span class="planner-chip ${issues.length ? 'is-warning' : 'is-success'}">${issues.length} issue${issues.length === 1 ? '' : 's'}</span>
-          <span class="planner-chip">${state.document.graph.nodes.length} nodes</span>
-          <span class="planner-chip">${state.document.graph.edges.length} edges</span>
-          ${selectionCount ? `<span class="planner-chip is-info">${selectionCount} selected</span>` : ''}
-          <span class="planner-chip">${zoom}% zoom</span>
-          <span class="planner-chip ${state.meta.dirty ? 'is-warning' : ''}">${state.meta.dirty ? 'Unsaved changes' : savedLabel}</span>
-          <span class="planner-chip ${backendTone}">${backendLabel}</span>
-          <span class="planner-chip">${storageLabel}</span>
-          ${meta.reason ? `<span class="planner-chip">${Planner.escapeHtml(meta.reason)}</span>` : ''}
         </div>
       `;
+
+      const importInput = document.createElement('input');
+      importInput.type = 'file';
+      importInput.accept = 'application/json,.json';
+      importInput.hidden = true;
+      importInput.dataset.importInput = 'true';
+      mountNode.appendChild(importInput);
     };
 
     const handleClick = (event) => {
@@ -127,6 +153,15 @@
       }
 
       const action = actionButton.dataset.action;
+
+      if (action === 'toggle-overflow') {
+        event.stopPropagation();
+        toggleOverflow();
+        return;
+      }
+
+      closeOverflow();
+
       if (action === 'validate') actions.validate?.();
       if (action === 'simulate') actions.simulate?.();
       if (action === 'export-workflow') actions.exportWorkflow?.();
@@ -170,10 +205,18 @@
       }
     };
 
+    const handleDocClick = (event) => {
+      if (overflowOpen && !mountNode.contains(event.target)) {
+        closeOverflow();
+      }
+    };
+
     mountNode.addEventListener('click', handleClick);
     mountNode.addEventListener('change', handleChange);
+    document.addEventListener('click', handleDocClick);
     cleanup.push(() => mountNode.removeEventListener('click', handleClick));
     cleanup.push(() => mountNode.removeEventListener('change', handleChange));
+    cleanup.push(() => document.removeEventListener('click', handleDocClick));
     cleanup.push(store.subscribe(render));
 
     return {
