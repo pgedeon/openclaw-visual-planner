@@ -144,25 +144,27 @@ svg text {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background:
-    radial-gradient(circle at top right, rgba(96, 205, 255, 0.12), transparent 28%),
-    radial-gradient(circle at bottom left, rgba(251, 113, 133, 0.06), transparent 26%);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 .planner-window {
   position: relative;
   z-index: 1;
-  height: calc(100vh - 36px);
-  min-height: 760px;
+  flex: 1 1 0;
+  min-height: 0;
   display: grid;
-  gap: 14px;
-  grid-template-rows: auto minmax(0, 1fr) minmax(220px, 28vh);
+  gap: 10px;
+  grid-template-rows: auto minmax(0, 1fr) minmax(180px, 26vh);
+  overflow: hidden;
 }
 
 .planner-workspace {
   min-height: 0;
+  overflow: hidden;
   display: grid;
-  gap: 14px;
+  gap: 10px;
   grid-template-columns: minmax(280px, 320px) minmax(0, 1fr) minmax(320px, 360px);
 }
 
@@ -1555,22 +1557,20 @@ svg text {
   }
 
   .planner-window {
-    height: auto;
-    min-height: calc(100vh - 36px);
-    grid-template-rows: auto auto minmax(220px, auto) minmax(220px, auto);
+    grid-template-rows: auto minmax(0, 1fr) minmax(180px, 26vh);
   }
 
   .planner-workspace {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(62vh, 1fr) auto;
+    overflow: auto;
   }
 
   .planner-sidebar {
-    max-height: 420px;
+    max-height: none;
   }
 
   .planner-stage {
-    min-height: 62vh;
+    min-height: 400px;
   }
 }
 
@@ -1748,6 +1748,7 @@ svg text {
   display: grid;
   grid-template-rows: auto 1fr;
   min-height: 0;
+  overflow: hidden;
   transition: grid-template-rows 0.25s cubic-bezier(0.4, 0, 0.2, 1),
               opacity 0.2s ease,
               transform 0.2s ease;

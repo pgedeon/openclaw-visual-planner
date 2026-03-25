@@ -181,7 +181,7 @@
         ? 'auto minmax(0, 1fr)'
         : trayCollapsed
           ? 'auto minmax(0, 1fr) 42px'
-          : 'auto minmax(0, 1fr) minmax(220px, 28vh)';
+          : 'auto minmax(0, 1fr) minmax(180px, 26vh)';
 
       windowEl.style.gridTemplateRows = rows;
     }
