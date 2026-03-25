@@ -1738,35 +1738,64 @@ svg text {
   padding: 2px 8px;
 }
 
+
 /* --------------------------------------------
-   Panel Headers (collapse + drag + hide)
+   Panel System v2 — Wrappers, Headers, Collapse, Hide, Drag
    -------------------------------------------- */
+
+/* Panel wrapper: survives innerHTML re-renders of child content */
+.planner-panel-wrap {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-height: 0;
+  transition: grid-template-rows 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 0.2s ease,
+              transform 0.2s ease;
+  overflow: hidden;
+}
+
+.planner-panel-wrap[data-panel-state="collapsed"] {
+  grid-template-rows: auto 0fr;
+}
+
+.planner-panel-wrap[data-panel-state="collapsed"] > :nth-child(2) {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* --- Panel Header --- */
 
 .planner-panel-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  margin-bottom: 8px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.03);
+  gap: 6px;
+  padding: 5px 6px 4px;
   border-bottom: 1px solid var(--planner-border-subtle);
   user-select: none;
   flex-shrink: 0;
+  z-index: 2;
+}
+
+.planner-panel-header:hover {
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .planner-panel-header__drag {
   cursor: grab;
-  font-size: 0.85rem;
+  font-size: 0.78rem;
   color: var(--planner-text-tertiary);
-  padding: 2px 4px;
-  border-radius: 4px;
-  opacity: 0.5;
-  transition: opacity var(--planner-transition);
+  padding: 1px 3px;
+  border-radius: 3px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.planner-panel-header:hover .planner-panel-header__drag {
+  opacity: 0.6;
 }
 
 .planner-panel-header__drag:hover {
-  opacity: 1;
+  opacity: 1 !important;
   background: rgba(255, 255, 255, 0.06);
 }
 
@@ -1776,7 +1805,7 @@ svg text {
 
 .planner-panel-header__label {
   flex: 1;
-  font-size: 0.72rem;
+  font-size: 0.65rem;
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -1786,23 +1815,28 @@ svg text {
 .planner-panel-header__actions {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 1px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.planner-panel-header:hover .planner-panel-header__actions {
+  opacity: 1;
 }
 
 .planner-panel-header__btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   border: none;
-  border-radius: 6px;
+  border-radius: 4px;
   background: transparent;
   color: var(--planner-text-tertiary);
   cursor: pointer;
-  font-size: 0.75rem;
   padding: 0;
-  transition: background var(--planner-transition), color var(--planner-transition);
+  transition: background 0.12s ease, color 0.12s ease;
 }
 
 .planner-panel-header__btn:hover {
@@ -1810,122 +1844,196 @@ svg text {
   color: var(--planner-text);
 }
 
-.planner-panel-header__collapse-icon {
-  display: inline-block;
-  font-size: 0.6rem;
-  transition: transform 0.2s ease;
+.planner-panel-header__chevron {
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* --- Panel collapsed state --- */
-
-.planner-panel.is-collapsed {
-  min-height: 0 !important;
-  max-height: 42px;
-  overflow: hidden;
-}
-
-.planner-panel.is-collapsed > *:not(.planner-panel-header) {
-  display: none !important;
-}
-
-.planner-panel.is-collapsed .planner-panel-header__collapse-icon {
+.planner-panel-wrap[data-panel-state="collapsed"] .planner-panel-header__chevron {
   transform: rotate(-90deg);
 }
 
-/* --- Panel hidden state --- */
+/* --- Panel Hidden --- */
 
-.planner-panel.is-hidden {
+.planner-panel-wrap.is-hidden {
   display: none !important;
 }
 
-/* --- Panel dragging --- */
-
-.planner-panel.is-dragging {
-  opacity: 0.4;
-  outline: 2px dashed var(--planner-accent);
-  outline-offset: -2px;
+.planner-panel-wrap.is-hiding {
+  opacity: 0;
+  transform: scale(0.97);
+  pointer-events: none;
 }
 
-.planner-panel.is-drag-over {
+.planner-panel-wrap.is-showing {
+  animation: panelShowIn 0.2s ease forwards;
+}
+
+@keyframes panelShowIn {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* --- Panel Dragging --- */
+
+.planner-panel-wrap.is-dragging {
+  opacity: 0.35;
+  z-index: 50;
+}
+
+.planner-panel-wrap.is-drag-over {
   outline: 2px solid var(--planner-accent);
   outline-offset: -2px;
+  border-radius: var(--planner-radius-xl);
 }
 
 /* --------------------------------------------
-   View Menu (panel visibility toggles)
+   View Menu
    -------------------------------------------- */
 
 .planner-view-menu-btn {
   position: fixed;
-  top: 12px;
-  right: 12px;
+  top: 10px;
+  right: 10px;
   z-index: 200;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   border: 1px solid var(--planner-border);
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--planner-surface);
   color: var(--planner-text-secondary);
   cursor: pointer;
-  font-size: 1rem;
-  transition: background var(--planner-transition), color var(--planner-transition);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  padding: 0;
+  transition: background 0.12s ease, color 0.12s ease, transform 0.1s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
 }
 
 .planner-view-menu-btn:hover {
   background: var(--planner-surface-hover);
   color: var(--planner-text);
+  transform: scale(1.05);
+}
+
+.planner-view-menu-btn:active {
+  transform: scale(0.95);
 }
 
 .planner-view-menu {
   position: fixed;
-  top: 50px;
-  right: 12px;
+  top: 46px;
+  right: 10px;
   z-index: 200;
-  min-width: 170px;
-  padding: 8px;
+  min-width: 190px;
+  padding: 6px;
   border-radius: 12px;
   border: 1px solid var(--planner-border);
   background: var(--planner-surface);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
   display: none;
+  opacity: 0;
+  transform: translateY(-4px) scale(0.98);
+  transition: opacity 0.15s ease, transform 0.15s ease;
 }
 
 .planner-view-menu.is-open {
   display: block;
+  opacity: 1;
+  transform: translateY(0) scale(1);
 }
 
 .planner-view-menu__title {
-  font-size: 0.68rem;
+  font-size: 0.62rem;
   font-weight: 700;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--planner-text-tertiary);
-  padding: 2px 6px 6px;
+  padding: 4px 8px 6px;
 }
 
 .planner-view-menu__item {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 8px;
+  padding: 5px 8px;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   color: var(--planner-text);
-  transition: background var(--planner-transition);
+  transition: background 0.1s ease;
 }
 
 .planner-view-menu__item:hover {
   background: rgba(255, 255, 255, 0.06);
 }
 
-.planner-view-menu__item input[type="checkbox"] {
-  accent-color: var(--planner-accent);
+.planner-view-menu__toggle {
+  display: flex;
+  align-items: center;
   cursor: pointer;
+}
+
+.planner-view-menu__toggle input {
+  display: none;
+}
+
+.planner-view-menu__checkmark {
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--planner-border);
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.1s ease, border-color 0.1s ease;
+  flex-shrink: 0;
+}
+
+.planner-view-menu__toggle input:checked + .planner-view-menu__checkmark {
+  background: var(--planner-accent);
+  border-color: var(--planner-accent);
+}
+
+.planner-view-menu__toggle input:checked + .planner-view-menu__checkmark::after {
+  content: '✓';
+  font-size: 0.6rem;
+  color: #05131c;
+  font-weight: 700;
+}
+
+.planner-view-menu__item-label {
+  flex: 1;
+}
+
+.planner-view-menu__item-status {
+  font-size: 0.65rem;
+  color: var(--planner-text-tertiary);
+  text-transform: lowercase;
+}
+
+.planner-view-menu__footer {
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--planner-border-subtle);
+}
+
+.planner-view-menu__reset {
+  width: 100%;
+  padding: 5px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--planner-text-tertiary);
+  font-size: 0.72rem;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.planner-view-menu__reset:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--planner-text);
 }
 
 /* --- Legacy inspector collapse (responsive) --- */
