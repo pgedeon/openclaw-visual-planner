@@ -120,6 +120,7 @@
 
         const ctrl = document.createElement('div');
         ctrl.className = 'planner-panel-controls';
+        ctrl.dataset.pcTarget = id;
         ctrl.innerHTML = `
           <button class="planner-panel-controls__btn" data-pc-collapse="${id}" title="Toggle ${PANEL_LABELS[id]}">
             <svg width="8" height="8" viewBox="0 0 8 8"><path d="M1 2.5L4 5.5L7 2.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
@@ -128,7 +129,16 @@
             <svg width="8" height="8" viewBox="0 0 8 8"><path d="M1 1L7 7M7 1L1 7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" fill="none"/></svg>
           </button>
         `;
-        el.appendChild(ctrl);
+
+        // Toolbar re-renders innerHTML, so attach to parent instead
+        if (id === 'toolbar' && el.parentElement) {
+          ctrl.style.position = 'absolute';
+          ctrl.style.top = '4px';
+          ctrl.style.right = '4px';
+          el.parentElement.appendChild(ctrl);
+        } else {
+          el.appendChild(ctrl);
+        }
       }
 
       // View menu button
@@ -249,6 +259,19 @@
     // --- Init ---
     function init() {
       injectControls();
+
+      // Re-inject controls after panels re-render via innerHTML
+      ['toolbar', 'inspector', 'tray'].forEach(id => {
+        const el = getEl(id);
+        if (!el) return;
+        const obs = new MutationObserver(() => {
+          const target = el.parentElement?.querySelector(`.planner-panel-controls[data-pc-target="${id}"]`)
+            || el.querySelector(`.planner-panel-controls[data-pc-target="${id}"]`);
+          if (!target) injectControls();
+        });
+        obs.observe(el, { childList: true });
+        cleanup.push(() => obs.disconnect());
+      });
 
       // Restore state
       for (const id of PANEL_IDS) {
