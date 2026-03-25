@@ -19,17 +19,9 @@ A native windowed app inside the WebOS desktop shell that lets you:
 
 See [PROGRESS.md](./PROGRESS.md)
 
-## Screenshots
+## Screenshot
 
-### Main View — Canvas with Palette, Inspector, and Tray
-
-![OpenClaw Visual Planner — Main View](docs/screenshots/main-view.png)
-
-### Toolbar with Overflow Menu
-
-The toolbar keeps core actions visible while less-frequent tools live in the ⋯ overflow dropdown.
-
-![OpenClaw Visual Planner — Overflow Menu](docs/screenshots/overflow-menu.png)
+![OpenClaw Visual Planner](docs/screenshots/main-view.png)
 
  for detailed phase tracking and milestones.
 
