@@ -1748,7 +1748,7 @@ svg text {
   display: grid;
   grid-template-rows: auto 1fr;
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
   transition: grid-template-rows 0.25s cubic-bezier(0.4, 0, 0.2, 1),
               opacity 0.2s ease,
               transform 0.2s ease;
@@ -1762,6 +1762,14 @@ svg text {
 .planner-panel-wrap[data-panel-state="collapsed"] > :nth-child(2) {
   min-height: 0;
   overflow: hidden;
+  visibility: hidden;
+}
+
+/* Scrollable panel content */
+.planner-panel-wrap > :nth-child(2) {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 /* --- Panel Header --- */
