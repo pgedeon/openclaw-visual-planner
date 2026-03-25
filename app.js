@@ -1062,6 +1062,14 @@
       notify,
     });
 
+
+    // Panel manager: collapse, hide, drag-reorder
+    const panelManager = Planner.createPanelManager({
+      rootNode,
+      store,
+      canvas,
+    });
+
     const scheduleAutosave = () => {
       window.clearTimeout(autosaveTimer);
       autosaveTimer = window.setTimeout(() => saveLocal({ silent: true }), 500);
@@ -1282,6 +1290,7 @@
       shellCleanupFns.forEach((cleanup) => cleanup?.());
       setModal(null);
       toolbar.destroy();
+      panelManager?.destroy();
       palette.destroy();
       inspector.destroy();
       tray.destroy();
